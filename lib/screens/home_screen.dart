@@ -19,6 +19,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _showReward = false;
   String _rewardMessage = '';
 
+  @override
+  void initState() {
+    super.initState();
+    // Load saved data from device storage
+    Future.microtask(() {
+      final persistenceService = ref.read(persistenceProvider);
+      
+      // Load saved XP
+      final savedXp = persistenceService.loadXp();
+      if (savedXp > 0) {
+        final currentXp = ref.read(xpProvider);
+        if (currentXp == 0) {
+          // Only load if no XP has been earned yet in this session
+          ref.read(xpProvider.notifier).addXp(savedXp);
+        }
+      }
+
+      // Load room clean status
+      final roomClean = persistenceService.loadRoomCleanStatus();
+      if (roomClean) {
+        ref.read(roomCleanProvider.notifier).cleanRoom();
+      }
+    });
+  }
+
   void _showRewardAnimated(String message) {
     setState(() {
       _rewardMessage = message;

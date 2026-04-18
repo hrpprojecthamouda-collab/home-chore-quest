@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'providers/game_providers.dart';
 import 'screens/home_screen.dart';
 
-void main() {
-  runApp(const ProviderScope(child: GamifiedApp()));
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        // Override the persistence provider with initialized instance
+      ],
+      child: const GamifiedApp(),
+    ),
+  );
 }
 
 class GamifiedApp extends StatelessWidget {

@@ -36,4 +36,25 @@ class Quest {
       category: category ?? this.category,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'xpReward': xpReward,
+      'isCompleted': isCompleted,
+      'category': category.name,
+    };
+  }
+
+  factory Quest.fromJson(Map<String, dynamic> json) {
+    return Quest(
+      name: json['name'] as String? ?? 'Unknown',
+      xpReward: json['xpReward'] as int? ?? 0,
+      isCompleted: json['isCompleted'] as bool? ?? false,
+      category: QuestCategory.values.firstWhere(
+        (e) => e.name == json['category'],
+        orElse: () => QuestCategory.cleaning,
+      ),
+    );
+  }
 }

@@ -1,7 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/quest.dart';
+import '../services/persistence_service.dart';
 import '../services/sound_service.dart';
+
+// Persistence service provider
+final persistenceProvider = Provider<PersistenceService>((ref) {
+  return PersistenceService();
+});
 
 class RoomCleanNotifier extends Notifier<bool> {
   @override
@@ -11,6 +17,8 @@ class RoomCleanNotifier extends Notifier<bool> {
 
   void cleanRoom() {
     state = true;
+    // Save to device storage
+    ref.read(persistenceProvider).saveRoomCleanStatus(true);
   }
 }
 
@@ -26,6 +34,8 @@ class XpNotifier extends Notifier<int> {
 
   void addXp(int amount) {
     state = state + amount;
+    // Save to device storage
+    ref.read(persistenceProvider).saveXp(state);
   }
 }
 
