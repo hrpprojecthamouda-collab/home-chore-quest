@@ -12,7 +12,7 @@ void main() async {
   runApp(
     ProviderScope(
       overrides: [
-        // Override the persistence provider with initialized instance
+        sharedPreferencesProvider.overrideWithValue(prefs),
       ],
       child: const GamifiedApp(),
     ),

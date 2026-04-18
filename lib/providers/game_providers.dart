@@ -1,24 +1,24 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/quest.dart';
-import '../services/persistence_service.dart';
 import '../services/sound_service.dart';
 
-// Persistence service provider
-final persistenceProvider = Provider<PersistenceService>((ref) {
-  return PersistenceService();
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('sharedPreferencesProvider must be overridden');
 });
 
 class RoomCleanNotifier extends Notifier<bool> {
   @override
   bool build() {
-    return false;
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool('isRoomClean') ?? false;
   }
 
   void cleanRoom() {
     state = true;
-    // Save to device storage
-    ref.read(persistenceProvider).saveRoomCleanStatus(true);
+    ref.read(sharedPreferencesProvider).setBool('isRoomClean', true);
   }
 }
 
@@ -29,13 +29,13 @@ final roomCleanProvider = NotifierProvider<RoomCleanNotifier, bool>(() {
 class XpNotifier extends Notifier<int> {
   @override
   int build() {
-    return 0;
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getInt('xp') ?? 0;
   }
 
   void addXp(int amount) {
     state = state + amount;
-    // Save to device storage
-    ref.read(persistenceProvider).saveXp(state);
+    ref.read(sharedPreferencesProvider).setInt('xp', state);
   }
 }
 
@@ -63,6 +63,18 @@ final xpToNextLevelProvider = Provider<int>((ref) {
 class QuestListNotifier extends Notifier<List<Quest>> {
   @override
   List<Quest> build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final questsJson = prefs.getString('quests');
+    
+    if (questsJson != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(questsJson);
+        return decoded.map((json) => Quest.fromJson(json)).toList();
+      } catch (e) {
+        print('Error loading quests: $e');
+      }
+    }
+    
     return const [
       Quest(
         name: 'Clean the Fridge',
@@ -92,12 +104,19 @@ class QuestListNotifier extends Notifier<List<Quest>> {
     ];
   }
 
+  void _saveQuests() {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final questsJson = jsonEncode(state.map((q) => q.toJson()).toList());
+    prefs.setString('quests', questsJson);
+  }
+
   void completeQuest(int index) {
     final updatedQuests = [...state];
     final currentQuest = updatedQuests[index];
 
     updatedQuests[index] = currentQuest.copyWith(isCompleted: true);
     state = updatedQuests;
+    _saveQuests();
   }
 
   void addQuest(String name, int reward, QuestCategory category) {
@@ -107,6 +126,7 @@ class QuestListNotifier extends Notifier<List<Quest>> {
       category: category,
     );
     state = [...state, newQuest];
+    _saveQuests();
   }
 }
 
