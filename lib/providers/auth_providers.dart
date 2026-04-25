@@ -121,3 +121,9 @@ final isAuthenticatedProvider = Provider<bool>((ref) {
   final user = ref.watch(currentUserProvider);
   return user != null;
 });
+
+// Scoped user ID — rebuilds game providers when auth user changes
+final currentUserIdProvider = Provider<String>((ref) {
+  final authState = ref.watch(authStateProvider);
+  return authState.asData?.value?.uid ?? 'anonymous';
+});

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/quest.dart';
 import '../services/sound_service.dart';
+import 'auth_providers.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('sharedPreferencesProvider must be overridden');
@@ -13,12 +14,24 @@ class RoomCleanNotifier extends Notifier<bool> {
   @override
   bool build() {
     final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs.getBool('isRoomClean') ?? false;
+    final uid  = ref.watch(currentUserIdProvider);
+    final nextDue = prefs.getInt('${uid}_cleanRoomNextDue') ?? 0;
+    // If the 48 h window has closed, room is messy regardless of stored flag
+    if (nextDue > 0 && DateTime.now().millisecondsSinceEpoch >= nextDue) {
+      return false;
+    }
+    return prefs.getBool('${uid}_isRoomClean') ?? false;
   }
 
   void cleanRoom() {
+    final uid   = ref.read(currentUserIdProvider);
+    final prefs = ref.read(sharedPreferencesProvider);
+    final nextDue = DateTime.now()
+        .add(const Duration(hours: 48))
+        .millisecondsSinceEpoch;
+    prefs.setInt('${uid}_cleanRoomNextDue', nextDue);
+    prefs.setBool('${uid}_isRoomClean', true);
     state = true;
-    ref.read(sharedPreferencesProvider).setBool('isRoomClean', true);
   }
 }
 
@@ -30,12 +43,14 @@ class XpNotifier extends Notifier<int> {
   @override
   int build() {
     final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs.getInt('xp') ?? 0;
+    final uid  = ref.watch(currentUserIdProvider);
+    return prefs.getInt('${uid}_xp') ?? 0;
   }
 
   void addXp(int amount) {
+    final uid = ref.read(currentUserIdProvider);
     state = state + amount;
-    ref.read(sharedPreferencesProvider).setInt('xp', state);
+    ref.read(sharedPreferencesProvider).setInt('${uid}_xp', state);
   }
 }
 
@@ -61,53 +76,59 @@ final xpToNextLevelProvider = Provider<int>((ref) {
 });
 
 class QuestListNotifier extends Notifier<List<Quest>> {
+  static const _cleanRoomQuest = Quest(
+    name: '🏠 Deep Clean the Room',
+    xpReward: 80,
+    category: QuestCategory.cleaning,
+    isCleanRoomQuest: true,
+  );
+
+  static const _defaultQuests = [
+    Quest(name: 'Clean the Fridge',  xpReward: 50,  category: QuestCategory.cleaning),
+    Quest(name: 'Take out Trash',    xpReward: 20,  category: QuestCategory.cleaning),
+    Quest(name: 'Buy milk & bread',  xpReward: 30,  category: QuestCategory.groceries),
+    Quest(name: 'Pay electric bill', xpReward: 40,  category: QuestCategory.bills),
+    Quest(name: 'New couch',         xpReward: 150, category: QuestCategory.upgrades),
+  ];
+
   @override
   List<Quest> build() {
     final prefs = ref.watch(sharedPreferencesProvider);
-    final questsJson = prefs.getString('quests');
-    
+    final uid   = ref.watch(currentUserIdProvider);
+    final questsJson = prefs.getString('${uid}_quests');
+
+    List<Quest> quests;
     if (questsJson != null) {
       try {
         final List<dynamic> decoded = jsonDecode(questsJson);
-        return decoded.map((json) => Quest.fromJson(json)).toList();
+        quests = decoded.map((json) => Quest.fromJson(json)).toList();
       } catch (e) {
         print('Error loading quests: $e');
+        quests = List.of(_defaultQuests);
       }
+    } else {
+      quests = List.of(_defaultQuests);
     }
-    
-    return const [
-      Quest(
-        name: 'Clean the Fridge',
-        xpReward: 50,
-        category: QuestCategory.cleaning,
-      ),
-      Quest(
-        name: 'Take out Trash',
-        xpReward: 20,
-        category: QuestCategory.cleaning,
-      ),
-      Quest(
-        name: 'Buy milk & bread',
-        xpReward: 30,
-        category: QuestCategory.groceries,
-      ),
-      Quest(
-        name: 'Pay electric bill',
-        xpReward: 40,
-        category: QuestCategory.bills,
-      ),
-      Quest(
-        name: 'New couch',
-        xpReward: 150,
-        category: QuestCategory.upgrades,
-      ),
-    ];
+
+    // Inject the recurring clean-room quest when its 48 h window has elapsed
+    final nextDue = prefs.getInt('${uid}_cleanRoomNextDue') ?? 0;
+    final isDue = nextDue == 0 ||
+        DateTime.now().millisecondsSinceEpoch >= nextDue;
+    if (isDue) {
+      quests = [_cleanRoomQuest, ...quests];
+    }
+
+    return quests;
   }
 
   void _saveQuests() {
+    final uid   = ref.read(currentUserIdProvider);
     final prefs = ref.read(sharedPreferencesProvider);
-    final questsJson = jsonEncode(state.map((q) => q.toJson()).toList());
-    prefs.setString('quests', questsJson);
+    // Never persist the clean-room quest — it is always injected fresh
+    final questsJson = jsonEncode(
+      state.where((q) => !q.isCleanRoomQuest).map((q) => q.toJson()).toList(),
+    );
+    prefs.setString('${uid}_quests', questsJson);
   }
 
   void completeQuest(int index) {

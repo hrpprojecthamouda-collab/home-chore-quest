@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../models/quest.dart';
 import '../providers/auth_providers.dart';
 import '../providers/game_providers.dart';
 import '../services/sound_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/add_quest_dialog.dart';
+import '../widgets/room_scene.dart';
+import '../widgets/xp_bar.dart';
 import 'category_screen.dart';
+import 'celebration_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -17,346 +22,203 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  bool _showReward = false;
-  String _rewardMessage = '';
+  bool _showReward  = false;
+  String _rewardMsg = '';
 
   Future<void> _signOut() async {
-    final shouldSignOut = await showDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Disconnect User'),
-        content: const Text('Do you want to disconnect from your account?'),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Log out?', style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w900)),
+        content: Text('Pip will miss you 💜', style: GoogleFonts.nunito(color: AppColors.muted)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: GoogleFonts.nunito(color: AppColors.muted, fontWeight: FontWeight.w700)),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Disconnect'),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Log out', style: GoogleFonts.nunito(color: AppColors.red, fontWeight: FontWeight.w900)),
           ),
         ],
       ),
     );
-
-    if (shouldSignOut != true) return;
-
+    if (ok != true) return;
     try {
       await ref.read(authNotifierProvider.notifier).signOut();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not disconnect: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Could not log out: $e'), backgroundColor: AppColors.red),
       );
     }
   }
 
-  void _showRewardAnimated(String message) {
-    setState(() {
-      _rewardMessage = message;
-      _showReward = true;
-    });
-
-    Future.delayed(const Duration(milliseconds: 900), () {
+  void _showToast(String msg) {
+    setState(() { _rewardMsg = msg; _showReward = true; });
+    Future.delayed(const Duration(milliseconds: 1800), () {
       if (!mounted) return;
-      setState(() {
-        _showReward = false;
-      });
+      setState(() => _showReward = false);
     });
   }
 
-  void _completeQuestWithSound(int questIndex, Quest quest, WidgetRef ref) async {
-    final soundService = ref.read(soundServiceProvider);
-    final previousXp = ref.read(xpProvider);
-    final previousLevel = (previousXp ~/ xpPerLevel) + 1;
+  Future<void> _completeQuest(int index, Quest quest) async {
+    final sound = ref.read(soundServiceProvider);
+    final prevXp  = ref.read(xpProvider);
+    final prevLvl = (prevXp ~/ xpPerLevel) + 1;
 
-    // Complete quest and add XP
-    ref.read(questListProvider.notifier).completeQuest(questIndex);
+    ref.read(questListProvider.notifier).completeQuest(index);
     ref.read(xpProvider.notifier).addXp(quest.xpReward);
+    if (quest.isCleanRoomQuest) ref.read(roomCleanProvider.notifier).cleanRoom();
+    await sound.playSound(SoundType.questComplete);
 
-    // Play quest complete sound
-    await soundService.playSound(SoundType.questComplete);
+    final newXp  = ref.read(xpProvider);
+    final newLvl = (newXp ~/ xpPerLevel) + 1;
 
-    // Check for level up
-    final newXp = ref.read(xpProvider);
-    final newLevel = (newXp ~/ xpPerLevel) + 1;
-
-    if (newLevel > previousLevel) {
+    if (newLvl > prevLvl) {
       await Future.delayed(const Duration(milliseconds: 600));
-      if (mounted) {
-        // Show level up animation
-        _showRewardAnimated('🎉 LEVEL UP! Level $newLevel!');
-        // Play level up sound
-        await soundService.playSound(SoundType.levelUp);
-      }
+      if (!mounted) return;
+      await sound.playSound(SoundType.levelUp);
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CelebrationScreen(level: newLvl),
+      ));
     } else {
-      _showRewardAnimated('Quest complete +${quest.xpReward} XP!');
+      _showToast('+${quest.xpReward} XP — Quest done!');
     }
+  }
+
+  void _navigateToCategory(QuestCategory cat, Rect sourceRect) {
+    Navigator.of(context).push(
+      FurnitureZoomRoute(
+        page: CategoryScreen(category: cat),
+        sourceRect: sourceRect,
+        category: cat,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isRoomClean = ref.watch(roomCleanProvider);
-    final currentXp = ref.watch(xpProvider);
-    final currentLevel = ref.watch(levelProvider);
-    final xpProgress = ref.watch(xpProgressProvider);
-    final xpToNext = ref.watch(xpToNextLevelProvider);
-    final questList = ref.watch(questListProvider);
-    final pendingQuestCount = ref.watch(pendingQuestCountProvider);
+    final isClean        = ref.watch(roomCleanProvider);
+    final currentXp      = ref.watch(xpProvider);
+    final currentLevel   = ref.watch(levelProvider);
+    final xpProgress     = ref.watch(xpProgressProvider);
+    final xpToNext       = ref.watch(xpToNextLevelProvider);
+    final questList      = ref.watch(questListProvider);
+    final pendingCount   = ref.watch(pendingQuestCountProvider);
+    final userName       = ref.watch(authStateProvider).value?.displayName ?? 'Adventurer';
 
-    Color roomColor = isRoomClean ? Colors.green.shade50 : Colors.orange.shade50;
-    if (pendingQuestCount >= 3) {
-      roomColor = Colors.red.shade50;
-    }
+    final pendingQuests  = questList.where((q) => !q.isCompleted).toList();
+    final badgeCounts = {
+      QuestCategory.cleaning:  ref.watch(pendingQuestsByCategory(QuestCategory.cleaning)).length,
+      QuestCategory.groceries: ref.watch(pendingQuestsByCategory(QuestCategory.groceries)).length,
+      QuestCategory.bills:     ref.watch(pendingQuestsByCategory(QuestCategory.bills)).length,
+      QuestCategory.upgrades:  ref.watch(pendingQuestsByCategory(QuestCategory.upgrades)).length,
+    };
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Level $currentLevel • XP: $currentXp • Pending: $pendingQuestCount'),
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        actions: [
-          IconButton(
-            tooltip: 'Disconnect user',
-            onPressed: _signOut,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
-          Container(
-            color: roomColor,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          isRoomClean
-                              ? 'The room is sparkling clean ✨'
-                              : 'The room still needs attention 🧹',
-                          style: Theme.of(context).textTheme.titleMedium,
+          // Scrollable content
+          SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _buildHeader(userName, currentLevel, pendingCount)),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                    child: Column(
+                      children: [
+                        XpBar(value: xpProgress, max: xpPerLevel),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '$xpProgress / $xpPerLevel XP',
+                              style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted),
+                            ),
+                            Text(
+                              '$xpToNext XP to LV ${currentLevel + 1} 🌟',
+                              style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.yellow),
+                            ),
+                          ],
                         ),
-                      ),
-                      if (!isRoomClean)
-                        ElevatedButton(
-                          onPressed: () async {
-                            final soundService = ref.read(soundServiceProvider);
-                            final previousXp = ref.read(xpProvider);
-                            final previousLevel = (previousXp ~/ xpPerLevel) + 1;
-
-                            ref.read(roomCleanProvider.notifier).cleanRoom();
-                            ref.read(xpProvider.notifier).addXp(10);
-
-                            // Play sound
-                            await soundService.playSound(SoundType.questComplete);
-
-                            // Check for level up
-                            final newXp = ref.read(xpProvider);
-                            final newLevel = (newXp ~/ xpPerLevel) + 1;
-
-                            if (newLevel > previousLevel) {
-                              await Future.delayed(const Duration(milliseconds: 600));
-                              if (mounted) {
-                                _showRewardAnimated('🎉 LEVEL UP! Level $newLevel!');
-                                await soundService.playSound(SoundType.levelUp);
-                              }
-                            } else {
-                              _showRewardAnimated('Room cleaned +10 XP!');
-                            }
-                          },
-                          child: const Text('Clean'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  Text('XP Progress ($xpProgress / $xpPerLevel)', style: Theme.of(context).textTheme.bodyLarge,),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: LinearProgressIndicator(
-                      value: xpProgress / xpPerLevel,
-                      minHeight: 14,
-                      backgroundColor: Colors.grey.shade300,
-                      color: Colors.green,
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text('$xpToNext XP to next level', style: Theme.of(context).textTheme.bodySmall),
-
-                  const SizedBox(height: 24),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showAddQuestDialog(context);
-                        },
-                        icon: const Icon(Icons.add),
-                        label: const Text('New Mission!'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple.shade600,
+                ),
+                // Room scene
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: _buildRoomCard(isClean, badgeCounts),
+                  ),
+                ),
+                // Today's quests header
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Today's quests",
+                          style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Recent Quests',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Flexible(
-                    flex: 5,
-                    child: questList.isEmpty
-                        ? const Center(child: Text('No quests available'))
-                        : ListView.builder(
-                            itemCount: questList.length,
-                            itemBuilder: (context, index) {
-                              final quest = questList[index];
-                              if (quest.isCompleted) {
-                                return const SizedBox.shrink();
-                              }
-
-                              return Card(
-                                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              quest.name,
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${quest.xpReward} XP • ${quest.category.label}',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: Colors.grey[600],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          _completeQuestWithSound(index, quest, ref);
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 20,
-                                            vertical: 12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          'Complete (+${quest.xpReward})',
-                                          style: const TextStyle(fontSize: 16),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
+                        GestureDetector(
+                          onTap: () => Navigator.of(context).push(
+                            SlidePageRoute(page: const CategoryScreen(category: QuestCategory.cleaning)),
                           ),
+                          child: Text(
+                            'SEE ALL ›',
+                            style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.cyan),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Quest Categories',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Flexible(
-                    flex: 4,
-                    child: GridView.count(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 6,
-                      mainAxisSpacing: 6,
-                      childAspectRatio: 0.8,
-                      children: QuestCategory.values.map((category) {
-                        final count = ref.watch(pendingQuestsByCategory(category)).length;
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              SlidePageRoute(
-                                page: CategoryScreen(category: category),
+                ),
+                // Quest list
+                pendingQuests.isEmpty
+                    ? SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Center(
+                            child: Text(
+                              '✨ All clear! Pip is proud of you.',
+                              style: GoogleFonts.nunito(color: AppColors.muted, fontSize: 14, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      )
+                    : SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (ctx, i) {
+                            final quest = pendingQuests[i];
+                            final realIndex = questList.indexOf(quest);
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                              child: _QuestCard(
+                                quest: quest,
+                                onComplete: () => _completeQuest(realIndex, quest),
                               ),
                             );
                           },
-                          child: Card(
-                            color: Colors.white,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: count > 0 ? Colors.orange : Colors.grey,
-                                  width: count > 0 ? 2 : 1,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    category.label.split(' ')[0],
-                                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  if (count > 0)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 1,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        '$count',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    const Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green,
-                                      size: 16,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ],
-              ),
+                          childCount: pendingQuests.length,
+                        ),
+                      ),
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              ],
             ),
           ),
+
+          // Toast notification
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
-            bottom: _showReward ? 30 : -120,
+            bottom: _showReward ? 30 : -80,
             left: 20,
             right: 20,
             child: AnimatedOpacity(
@@ -365,24 +227,293 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 12, offset: Offset(0, 4))],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.star, color: Colors.yellowAccent),
+                    const Text('⭐', style: TextStyle(fontSize: 16)),
                     const SizedBox(width: 8),
                     Text(
-                      _rewardMessage,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      _rewardMsg,
+                      style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
                     ),
                   ],
                 ),
               ),
             ),
           ),
+
+          // FAB
+          Positioned(
+            right: 18,
+            bottom: 18,
+            child: GestureDetector(
+              onTap: () => showAddQuestBottomSheet(context),
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: AppColors.pink,
+                  shape: BoxShape.circle,
+                  boxShadow: const [
+                    BoxShadow(color: Color(0xFFA8125C), offset: Offset(0, 5)),
+                    BoxShadow(color: Color(0x66FF4D8D), blurRadius: 20, spreadRadius: 2),
+                  ],
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 32),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(String name, int level, int pending) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          // Avatar circle
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFC98AFF), AppColors.violet],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: const [BoxShadow(color: Color(0x4D000000), offset: Offset(0, 3))],
+            ),
+            child: Center(
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'A',
+                style: GoogleFonts.nunito(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Hi, $name!', style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white, height: 1)),
+              Text('Level $level adventurer', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted)),
+            ],
+          ),
+          const Spacer(),
+          _Chip(label: '🔥 0', color: AppColors.yellow, dark: true),
+          const SizedBox(width: 8),
+          _Chip(label: '💎 $pending', color: AppColors.violet),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _signOut,
+            child: const Icon(Icons.logout, color: AppColors.muted, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoomCard(bool isClean, Map<QuestCategory, int> badgeCounts) {
+    return Container(
+      height: 220,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.surface2, AppColors.bgDeep],
+        ),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [BoxShadow(color: Color(0x66000000), offset: Offset(0, 4))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Stack(
+          children: [
+            RoomScene(
+              messy: !isClean,
+              onCategoryTap: _navigateToCategory,
+              badgeCounts: badgeCounts,
+            ),
+            // Status badge
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+                decoration: BoxDecoration(
+                  color: isClean ? AppColors.green : AppColors.red,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: const [BoxShadow(color: Color(0x4D000000), offset: Offset(0, 2))],
+                ),
+                child: Text(
+                  isClean ? '✨ TIDY' : '😬 MESSY',
+                  style: GoogleFonts.nunito(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: isClean ? AppColors.bgDeep : Colors.white,
+                    letterSpacing: .5,
+                  ),
+                ),
+              ),
+            ),
+            // Tap hint
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'Tap furniture to open a category',
+                  style: GoogleFonts.nunito(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withOpacity(.45),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuestCard extends StatelessWidget {
+  final Quest quest;
+  final VoidCallback onComplete;
+
+  const _QuestCard({required this.quest, required this.onComplete});
+
+  Color _darken(Color c, double a) {
+    final h = HSLColor.fromColor(c);
+    return h.withLightness((h.lightness - a).clamp(0, 1)).toColor();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c1 = quest.category.color1;
+    final c2 = quest.category.color2;
+    final green = AppColors.green;
+    final greenDark = const Color(0xFF22894A);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4)),
+          BoxShadow(color: Color(0x14FFFFFF), offset: Offset(0, 1)),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Category icon
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [c1, c2], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [BoxShadow(color: Color(0x33FFFFFF), offset: Offset(0, 2))],
+            ),
+            child: Center(child: Text(quest.category.glyph, style: const TextStyle(fontSize: 22))),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  quest.name,
+                  style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.bgDeep,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '+${quest.xpReward} XP',
+                        style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.yellow),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      quest.category.label.split(' ').last,
+                      style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // DO IT button
+          GestureDetector(
+            onTap: onComplete,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: BoxDecoration(
+                color: green,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: greenDark, offset: const Offset(0, 3))],
+              ),
+              child: Text(
+                'DO IT',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.bgDeep,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool dark;
+
+  const _Chip({required this.label, required this.color, this.dark = false});
+
+  Color _darken(Color c, double a) {
+    final h = HSLColor.fromColor(c);
+    return h.withLightness((h.lightness - a).clamp(0, 1)).toColor();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [BoxShadow(color: _darken(color, .2), offset: const Offset(0, 2))],
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w900, color: dark ? AppColors.bgDeep : Colors.white),
       ),
     );
   }

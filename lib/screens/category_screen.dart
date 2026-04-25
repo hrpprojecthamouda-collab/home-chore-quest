@@ -1,158 +1,389 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../models/quest.dart';
 import '../providers/game_providers.dart';
 import '../services/sound_service.dart';
-import '../widgets/animated_list_item.dart';
+import '../theme/app_theme.dart';
+import '../widgets/add_quest_dialog.dart';
+import 'celebration_screen.dart';
 
 class CategoryScreen extends ConsumerStatefulWidget {
   final QuestCategory category;
 
-  const CategoryScreen({
-    super.key,
-    required this.category,
-  });
+  const CategoryScreen({super.key, required this.category});
 
   @override
   ConsumerState<CategoryScreen> createState() => _CategoryScreenState();
 }
 
-class _CategoryScreenState extends ConsumerState<CategoryScreen> {
-  bool _showReward = false;
-  String _rewardMessage = '';
+class _CategoryScreenState extends ConsumerState<CategoryScreen>
+    with SingleTickerProviderStateMixin {
+  bool   _showReward = false;
+  String _rewardMsg  = '';
 
-  void _showRewardAnimated(String message) {
-    setState(() {
-      _rewardMessage = message;
-      _showReward = true;
+  late final AnimationController _entryCtrl;
+  late final Animation<Offset>   _headerSlide;
+  late final Animation<double>   _headerFade;
+
+  @override
+  void initState() {
+    super.initState();
+    _entryCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    // Header sweeps in from the right (full width off-screen)
+    _headerSlide = Tween<Offset>(
+      begin: const Offset(1.0, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _entryCtrl,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+    ));
+    _headerFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _entryCtrl, curve: const Interval(0.0, 0.45)),
+    );
+
+    // Start after the route transition completes (FurnitureZoomRoute: 520 ms)
+    Future.delayed(const Duration(milliseconds: 530), () {
+      if (mounted) _entryCtrl.forward();
     });
-
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (!mounted) return;
-      setState(() {
-        _showReward = false;
-      });
-    });
-  }
-
-  void _completeQuestWithSound(int questIndex, Quest quest, WidgetRef ref) async {
-    final soundService = ref.read(soundServiceProvider);
-    final previousXp = ref.read(xpProvider);
-    final previousLevel = (previousXp ~/ xpPerLevel) + 1;
-
-    // Complete quest and add XP
-    ref.read(questListProvider.notifier).completeQuest(questIndex);
-    ref.read(xpProvider.notifier).addXp(quest.xpReward);
-
-    // Play quest complete sound
-    await soundService.playSound(SoundType.questComplete);
-
-    // Check for level up
-    final newXp = ref.read(xpProvider);
-    final newLevel = (newXp ~/ xpPerLevel) + 1;
-
-    if (newLevel > previousLevel) {
-      await Future.delayed(const Duration(milliseconds: 600));
-      if (mounted) {
-        _showRewardAnimated('🎉 LEVEL UP! Level $newLevel!');
-        await soundService.playSound(SoundType.levelUp);
-      }
-    } else {
-      _showRewardAnimated('Quest complete +${quest.xpReward} XP!');
-    }
   }
 
   @override
+  void dispose() {
+    _entryCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  void _showToast(String msg) {
+    setState(() { _rewardMsg = msg; _showReward = true; });
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (!mounted) return;
+      setState(() => _showReward = false);
+    });
+  }
+
+  Future<void> _completeQuest(int questIndex, Quest quest) async {
+    final sound   = ref.read(soundServiceProvider);
+    final prevXp  = ref.read(xpProvider);
+    final prevLvl = (prevXp ~/ xpPerLevel) + 1;
+
+    ref.read(questListProvider.notifier).completeQuest(questIndex);
+    ref.read(xpProvider.notifier).addXp(quest.xpReward);
+    if (quest.isCleanRoomQuest) ref.read(roomCleanProvider.notifier).cleanRoom();
+    await sound.playSound(SoundType.questComplete);
+
+    final newXp  = ref.read(xpProvider);
+    final newLvl = (newXp ~/ xpPerLevel) + 1;
+
+    if (newLvl > prevLvl) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
+      await sound.playSound(SoundType.levelUp);
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => CelebrationScreen(level: newLvl)),
+      );
+    } else {
+      _showToast('+${quest.xpReward} XP — Quest done!');
+    }
+  }
+
+  // Returns staggered animation value for quest card at [index].
+  double _itemT(int index) {
+    const stagger = 0.13;
+    final start = (index * stagger).clamp(0.0, 0.60);
+    final end   = (start + 0.45).clamp(0.0, 1.0);
+    final raw   = (_entryCtrl.value - start) / (end - start);
+    return Curves.easeOutBack.transform(raw.clamp(0.0, 1.0));
+  }
+
+  // ── build ─────────────────────────────────────────────────────────────────
+
+  @override
   Widget build(BuildContext context) {
-    final questList = ref.watch(questsByCategory(widget.category));
-    final pendingCount = ref.watch(pendingQuestsByCategory(widget.category));
+    final cat         = widget.category;
+    final questList   = ref.watch(questsByCategory(cat));
+    final pendingList = ref.watch(pendingQuestsByCategory(cat));
+    final c1          = cat.color1;
+    final c2          = cat.color2;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.category.label),
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      ),
       body: Stack(
         children: [
-          Container(
-            color: Colors.blue.shade50,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.category.description,
-                    style: Theme.of(context).textTheme.bodyLarge,
+          Column(
+            children: [
+              // ── Gradient header ──────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [c1, c2],
                   ),
-                  const SizedBox(height: 12),
-                  Text('Pending: ${pendingCount.length}'),
-                  const SizedBox(height: 24),
-                  Text(
-                    '${widget.category.label} Quests',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: questList.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No quests in ${widget.category.label}',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: questList.length,
-                            itemBuilder: (context, index) {
-                              final quest = questList[index];
-
-                              return AnimatedListItem(
-                                index: index,
-                                child: Card(
-                                  color: quest.isCompleted
-                                      ? Colors.grey.shade200
-                                      : Colors.white,
-                                  child: ListTile(
-                                    leading: quest.isCompleted
-                                        ? const Icon(Icons.check_circle,
-                                            color: Colors.green)
-                                        : const Icon(Icons.circle_outlined),
-                                    title: Text(
-                                      quest.name,
-                                      style: TextStyle(
-                                        decoration: quest.isCompleted
-                                            ? TextDecoration.lineThrough
-                                            : null,
+                ),
+                // ClipRect prevents the sliding header content from painting
+                // outside the gradient container during the entry animation.
+                child: ClipRect(
+                  child: SafeArea(
+                    bottom: false,
+                    child: FadeTransition(
+                      opacity: _headerFade,
+                      child: SlideTransition(
+                        position: _headerSlide,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GestureDetector(
+                                onTap: () => Navigator.of(context).pop(),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.arrow_back_ios_new,
+                                        color: AppColors.bgDeep.withOpacity(.8), size: 16),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Back',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.bgDeep.withOpacity(.8),
                                       ),
                                     ),
-                                    subtitle: Text('${quest.xpReward} XP reward'),
-                                    trailing: quest.isCompleted
-                                        ? const Icon(Icons.done)
-                                        : ElevatedButton(
-                                            onPressed: () {
-                                              final questIndex = ref
-                                                  .read(questListProvider)
-                                                  .indexOf(quest);
-                                              if (questIndex != -1) {
-                                                _completeQuestWithSound(questIndex, quest, ref);
-                                              }
-                                            },
-                                            child: const Text('Complete'),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          cat.roomLabel,
+                                          style: GoogleFonts.nunito(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.bgDeep.withOpacity(.6),
+                                            letterSpacing: 1,
                                           ),
+                                        ),
+                                        Text(
+                                          cat.label.split(' ').last,
+                                          style: GoogleFonts.nunito(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.bgDeep,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${pendingList.length} sparkly quests',
+                                          style: GoogleFonts.nunito(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.bgDeep.withOpacity(.7),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(cat.glyph, style: const TextStyle(fontSize: 70)),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  _MiniStat(
+                                    label: 'Done this week',
+                                    value: questList.where((q) => q.isCompleted).length.toString(),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _MiniStat(
+                                    label: 'Earned',
+                                    value: '${questList.where((q) => q.isCompleted).fold(0, (s, q) => s + q.xpReward)} XP',
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const _MiniStat(label: 'Best streak', value: '5'),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Quest list ───────────────────────────────────────────────
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                  children: [
+                    // Section title fades in early
+                    AnimatedBuilder(
+                      animation: _entryCtrl,
+                      builder: (_, child) => Opacity(
+                        opacity: CurvedAnimation(
+                          parent: _entryCtrl,
+                          curve: const Interval(0, 0.35),
+                        ).value,
+                        child: child,
+                      ),
+                      child: Text(
+                        'On your list',
+                        style: GoogleFonts.nunito(
+                            fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Empty state
+                    if (questList.isEmpty)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Text(
+                            'No quests here yet!',
+                            style: GoogleFonts.nunito(
+                                color: AppColors.muted, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      )
+                    else
+                      // Quest cards — staggered rise from below
+                      ...questList.asMap().entries.map((entry) {
+                        final i     = entry.key;
+                        final quest = entry.value;
+                        final realIndex = ref.read(questListProvider).indexOf(quest);
+                        return AnimatedBuilder(
+                          animation: _entryCtrl,
+                          builder: (_, child) {
+                            final t = _itemT(i);
+                            return Opacity(
+                              opacity: t.clamp(0.0, 1.0),
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - t) * 30),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _CategoryQuestCard(
+                              quest: quest,
+                              onComplete: realIndex != -1
+                                  ? () => _completeQuest(realIndex, quest)
+                                  : null,
+                            ),
+                          ),
+                        );
+                      }),
+
+                    // Add quest button
+                    GestureDetector(
+                      onTap: () => showAddQuestBottomSheet(context, initialCategory: cat),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppColors.border, width: 2),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '+ Add a ${cat.label.split(' ').last.toLowerCase()} quest',
+                            style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.muted),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Weekly bounty card — fades in last
+                    AnimatedBuilder(
+                      animation: _entryCtrl,
+                      builder: (_, child) => Opacity(
+                        opacity: CurvedAnimation(
+                          parent: _entryCtrl,
+                          curve: const Interval(0.5, 1.0),
+                        ).value,
+                        child: child,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [AppColors.violet, AppColors.pink]),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4))
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Text('🏆', style: TextStyle(fontSize: 32)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Weekly Bounty',
+                                          style: GoogleFonts.nunito(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white)),
+                                      Text(
+                                        '${questList.where((q) => q.isCompleted).length} of ${questList.length} done · +50 bonus XP',
+                                        style: GoogleFonts.nunito(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white.withOpacity(.85),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                value: questList.isEmpty
+                                    ? 0
+                                    : questList.where((q) => q.isCompleted).length /
+                                        questList.length,
+                                minHeight: 8,
+                                backgroundColor: Colors.black.withOpacity(.3),
+                                color: AppColors.yellow,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
+
+          // Toast
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
-            bottom: _showReward ? 30 : -120,
+            bottom: _showReward ? 30 : -80,
             left: 20,
             right: 20,
             child: AnimatedOpacity(
@@ -161,26 +392,167 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.star, color: Colors.yellowAccent),
+                    const Text('⭐', style: TextStyle(fontSize: 16)),
                     const SizedBox(width: 8),
                     Text(
-                      _rewardMessage,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      _rewardMsg,
+                      style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14),
                     ),
                   ],
                 ),
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Supporting widgets ────────────────────────────────────────────────────────
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MiniStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(.4),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: GoogleFonts.nunito(
+                    fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
+            Text(label,
+                style: GoogleFonts.nunito(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withOpacity(.7))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryQuestCard extends StatelessWidget {
+  final Quest quest;
+  final VoidCallback? onComplete;
+
+  const _CategoryQuestCard({required this.quest, this.onComplete});
+
+  @override
+  Widget build(BuildContext context) {
+    final c1 = quest.category.color1;
+    final c2 = quest.category.color2;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: quest.isCompleted ? AppColors.bgDeep : AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: quest.isCompleted
+                    ? [AppColors.surface2, AppColors.surface]
+                    : [c1, c2],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Center(
+              child: quest.isCompleted
+                  ? const Icon(Icons.check, color: AppColors.green, size: 22)
+                  : Text(quest.category.glyph, style: const TextStyle(fontSize: 22)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  quest.name,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: quest.isCompleted ? AppColors.muted : Colors.white,
+                    decoration: quest.isCompleted ? TextDecoration.lineThrough : null,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgDeep,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '+${quest.xpReward} XP',
+                    style: GoogleFonts.nunito(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.yellow),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!quest.isCompleted && onComplete != null)
+            GestureDetector(
+              onTap: onComplete,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.green,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0xFF22894A), offset: Offset(0, 3))
+                  ],
+                ),
+                child: Text(
+                  'DO IT',
+                  style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.bgDeep),
+                ),
+              ),
+            ),
+          if (quest.isCompleted)
+            const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.check_circle, color: AppColors.green, size: 22),
+            ),
         ],
       ),
     );
