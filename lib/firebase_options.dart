@@ -52,49 +52,51 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: 'YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    authDomain: 'YOUR_AUTH_DOMAIN',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyBShNteiKsHPb_SlDs46Kc3PWtWhrBr2Rk',
+    appId: '1:130112773102:web:4d52c55fe34fc005ee4cff',
+    messagingSenderId: '130112773102',
+    projectId: 'hrp-project-9265b',
+    authDomain: 'hrp-project-9265b.firebaseapp.com',
+    storageBucket: 'hrp-project-9265b.firebasestorage.app',
+    measurementId: 'G-YDMV72CMY6',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'YOUR_ANDROID_API_KEY',
-    appId: 'YOUR_ANDROID_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyDV7llhrrEKaOS93wxLSTU2vV3Kx02Cy8I',
+    appId: '1:130112773102:android:4dd3ddecbeac51e1ee4cff',
+    messagingSenderId: '130112773102',
+    projectId: 'hrp-project-9265b',
+    storageBucket: 'hrp-project-9265b.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: 'YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyAJeJp4kC2Nyn6yzOWGt8VchEAVqXu0f1w',
+    appId: '1:130112773102:ios:7849dfb14ea3bc06ee4cff',
+    messagingSenderId: '130112773102',
+    projectId: 'hrp-project-9265b',
+    storageBucket: 'hrp-project-9265b.firebasestorage.app',
+    iosClientId: '130112773102-r0rchqbakp02sfp8vdvhuacsk1s5cg5q.apps.googleusercontent.com',
+    iosBundleId: 'com.example.gamifiedHome',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'YOUR_MACOS_API_KEY',
-    appId: 'YOUR_MACOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyAJeJp4kC2Nyn6yzOWGt8VchEAVqXu0f1w',
+    appId: '1:130112773102:ios:7849dfb14ea3bc06ee4cff',
+    messagingSenderId: '130112773102',
+    projectId: 'hrp-project-9265b',
+    storageBucket: 'hrp-project-9265b.firebasestorage.app',
+    iosClientId: '130112773102-r0rchqbakp02sfp8vdvhuacsk1s5cg5q.apps.googleusercontent.com',
+    iosBundleId: 'com.example.gamifiedHome',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'YOUR_WINDOWS_API_KEY',
-    appId: 'YOUR_WINDOWS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'YOUR_PROJECT_ID',
-    databaseURL: 'YOUR_DATABASE_URL',
-    storageBucket: 'YOUR_STORAGE_BUCKET',
+    apiKey: 'AIzaSyBShNteiKsHPb_SlDs46Kc3PWtWhrBr2Rk',
+    appId: '1:130112773102:web:84d40221baaf639dee4cff',
+    messagingSenderId: '130112773102',
+    projectId: 'hrp-project-9265b',
+    authDomain: 'hrp-project-9265b.firebaseapp.com',
+    storageBucket: 'hrp-project-9265b.firebasestorage.app',
+    measurementId: 'G-P2KM5871PY',
   );
 
   static const FirebaseOptions linux = FirebaseOptions(

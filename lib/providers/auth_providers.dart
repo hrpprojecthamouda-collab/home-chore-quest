@@ -46,11 +46,12 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
 
   Future<void> signUp({required String email, required String password, required String username}) async {
     state = const AsyncValue.loading();
+    UserCredential? userCredential;
     try {
       final authService = ref.read(firebaseAuthProvider);
       final userService = ref.read(firestoreUserProvider);
 
-      final userCredential = await authService.signUp(
+      userCredential = await authService.signUp(
         email: email,
         password: password,
       );
@@ -64,7 +65,13 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
 
       state = const AsyncValue.data(null);
     } catch (e, stack) {
+      // If auth succeeded but profile creation failed, roll back the auth user
+      // so auth and Firestore do not get out of sync.
+      if (userCredential?.user != null) {
+        await userCredential!.user!.delete();
+      }
       state = AsyncValue.error(e, stack);
+      rethrow;
     }
   }
 
@@ -76,6 +83,7 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
       state = const AsyncValue.data(null);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      rethrow;
     }
   }
 
@@ -87,6 +95,7 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
       state = const AsyncValue.data(null);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      rethrow;
     }
   }
 
@@ -98,6 +107,7 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
       state = const AsyncValue.data(null);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      rethrow;
     }
   }
 }

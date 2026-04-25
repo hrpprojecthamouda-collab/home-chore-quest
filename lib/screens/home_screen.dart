@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/quest.dart';
+import '../providers/auth_providers.dart';
 import '../providers/game_providers.dart';
 import '../services/sound_service.dart';
 import '../utils/page_transitions.dart';
@@ -18,6 +19,40 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _showReward = false;
   String _rewardMessage = '';
+
+  Future<void> _signOut() async {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Disconnect User'),
+        content: const Text('Do you want to disconnect from your account?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSignOut != true) return;
+
+    try {
+      await ref.read(authNotifierProvider.notifier).signOut();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not disconnect: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   void _showRewardAnimated(String message) {
     setState(() {
@@ -81,6 +116,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: Text('Level $currentLevel • XP: $currentXp • Pending: $pendingQuestCount'),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        actions: [
+          IconButton(
+            tooltip: 'Disconnect user',
+            onPressed: _signOut,
+            icon: const Icon(Icons.logout),
+          ),
+        ],
       ),
       body: Stack(
         children: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:rive/rive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
@@ -44,24 +45,71 @@ class GamifiedApp extends ConsumerWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
-      home: authState.when(
-        loading: () => const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        ),
-        error: (error, stackTrace) => Scaffold(
-          body: Center(
-            child: Text('Error: $error'),
-          ),
-        ),
-        data: (user) => user != null ? const HomeScreen() : const LoginScreen(),
-      ),
+      home: LaunchCinematicGate(authState: authState),
       routes: {
         '/home': (_) => const HomeScreen(),
         '/login': (_) => const LoginScreen(),
         '/signup': (_) => const SignupScreen(),
       },
+    );
+  }
+}
+
+class LaunchCinematicGate extends StatefulWidget {
+  const LaunchCinematicGate({
+    super.key,
+    required this.authState,
+  });
+
+  final AsyncValue<dynamic> authState;
+
+  @override
+  State<LaunchCinematicGate> createState() => _LaunchCinematicGateState();
+}
+
+class _LaunchCinematicGateState extends State<LaunchCinematicGate> {
+  bool _showCinematic = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(const Duration(seconds: 10), () {
+      if (!mounted) return;
+      setState(() {
+        _showCinematic = false;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showCinematic) {
+      final size = MediaQuery.of(context).size;
+      return Material(
+        color: Colors.black,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: RiveAnimation.asset(
+            'Loading_Screen.riv',
+            fit: BoxFit.fill,
+          ),
+        ),
+      );
+    }
+
+    return widget.authState.when(
+      loading: () => const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+      error: (error, stackTrace) => Scaffold(
+        body: Center(
+          child: Text('Error: $error'),
+        ),
+      ),
+      data: (user) => user != null ? const HomeScreen() : const LoginScreen(),
     );
   }
 }
