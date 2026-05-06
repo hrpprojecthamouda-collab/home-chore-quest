@@ -21,39 +21,41 @@ class XpBar extends StatelessWidget {
       padding: const EdgeInsets.all(2),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
-        child: Stack(
-          children: [
-            FractionallySizedBox(
-              widthFactor: pct,
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.yellow, AppColors.pink, AppColors.hotPink],
-                    stops: [0, .6, 1],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w     = constraints.maxWidth;
+            final fillW = w * pct;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned(
+                  left: 0, top: 0, bottom: 0,
+                  width: fillW,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [AppColors.yellow, AppColors.pink, AppColors.hotPink],
+                        stops: [0, .6, 1],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            // Shine overlay
-            Positioned(
-              top: 2,
-              left: 0,
-              right: 0,
-              height: 3,
-              child: FractionallySizedBox(
-                widthFactor: pct * .6,
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(.6),
-                    borderRadius: BorderRadius.circular(999),
+                Positioned(
+                  left: 0, top: 2,
+                  height: 3,
+                  width: fillW * .6,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(.6),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );

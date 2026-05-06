@@ -11,6 +11,7 @@ import 'providers/auth_providers.dart';
 import 'providers/game_providers.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/main_shell.dart';
 import 'screens/signup_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/pip_mascot.dart';
@@ -34,20 +35,18 @@ void main() async {
   );
 }
 
-class GamifiedApp extends ConsumerWidget {
+class GamifiedApp extends StatelessWidget {
   const GamifiedApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authStateProvider);
-
+  Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Home Chore Quest',
       theme: AppTheme.theme,
-      home: LaunchCinematicGate(authState: authState),
+      home: const LaunchCinematicGate(),
       routes: {
-        '/home': (_) => const HomeScreen(),
+        '/home': (_) => const MainShell(),
         '/login': (_) => const LoginScreen(),
         '/signup': (_) => const SignupScreen(),
       },
@@ -55,24 +54,19 @@ class GamifiedApp extends ConsumerWidget {
   }
 }
 
-class LaunchCinematicGate extends StatefulWidget {
-  const LaunchCinematicGate({super.key, required this.authState});
-
-  final AsyncValue<dynamic> authState;
+class LaunchCinematicGate extends ConsumerStatefulWidget {
+  const LaunchCinematicGate({super.key});
 
   @override
-  State<LaunchCinematicGate> createState() => _LaunchCinematicGateState();
+  ConsumerState<LaunchCinematicGate> createState() => _LaunchCinematicGateState();
 }
 
-class _LaunchCinematicGateState extends State<LaunchCinematicGate> {
+class _LaunchCinematicGateState extends ConsumerState<LaunchCinematicGate> {
   bool _minDone = false;
 
   @override
   void initState() {
     super.initState();
-    // 2.5 s minimum — enough for one full Pip breathing cycle + title read.
-    // We also wait for Firebase auth to resolve, so the real gate is
-    // max(2500 ms, auth_init_time). No extra delay if auth takes longer.
     Future.delayed(const Duration(milliseconds: 4000), () {
       if (!mounted) return;
       setState(() => _minDone = true);
@@ -81,16 +75,17 @@ class _LaunchCinematicGateState extends State<LaunchCinematicGate> {
 
   @override
   Widget build(BuildContext context) {
-    final authReady = !widget.authState.isLoading;
+    final authState = ref.watch(authStateProvider);
+    final authReady = !authState.isLoading;
 
     if (!_minDone || !authReady) {
       return const _SplashScreen();
     }
 
-    return widget.authState.when(
+    return authState.when(
       loading: () => const _SplashScreen(),
       error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
-      data: (user) => user != null ? const HomeScreen() : const LoginScreen(),
+      data: (user) => user != null ? const MainShell() : const LoginScreen(),
     );
   }
 }

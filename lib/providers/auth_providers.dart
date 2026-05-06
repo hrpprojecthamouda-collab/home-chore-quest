@@ -56,20 +56,23 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
         password: password,
       );
 
-      // Create user profile in Firestore
-      await userService.createUserProfile(
-        userId: userCredential.user!.uid,
-        email: email,
-        username: username,
-      );
+      // Set the display name in Firebase Auth so every screen can read it.
+      await userCredential.user?.updateDisplayName(username);
+
+      // Fire-and-forget: Firestore profile creation must never block signup.
+      // If rules are not yet deployed, the write silently queues or fails.
+      final uid = userCredential.user?.uid;
+      if (uid != null) {
+        userService.createUserProfile(
+          userId: uid,
+          email: email,
+          username: username,
+        ).catchError((_) {});
+      }
 
       state = const AsyncValue.data(null);
     } catch (e, stack) {
-      // If auth succeeded but profile creation failed, roll back the auth user
-      // so auth and Firestore do not get out of sync.
-      if (userCredential?.user != null) {
-        await userCredential!.user!.delete();
-      }
+      // Auth itself failed — roll back nothing (user was never created).
       state = AsyncValue.error(e, stack);
       rethrow;
     }

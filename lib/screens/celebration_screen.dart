@@ -1,18 +1,21 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../providers/game_providers.dart';
+import '../services/sound_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/pip_mascot.dart';
 import '../widgets/puffy_button.dart';
 
-class CelebrationScreen extends StatelessWidget {
+class CelebrationScreen extends ConsumerWidget {
   final int level;
 
   const CelebrationScreen({super.key, required this.level});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -117,14 +120,14 @@ class CelebrationScreen extends StatelessWidget {
                                 BoxShadow(color: Color(0x33FFFFFF), offset: Offset(0, 2)),
                               ],
                             ),
-                            child: const Center(child: Text('🪴', style: TextStyle(fontSize: 22))),
+                            child: const Center(child: Text('🪙', style: TextStyle(fontSize: 22))),
                           ),
                           const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Cozy Plant',
+                                '+50 Coins',
                                 style: GoogleFonts.nunito(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w900,
@@ -132,7 +135,7 @@ class CelebrationScreen extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                'New room decoration',
+                                'Level-up bonus — spend in the shop!',
                                 style: GoogleFonts.nunito(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -157,7 +160,10 @@ class CelebrationScreen extends StatelessWidget {
                     PuffyButton(
                       label: 'Awesome!',
                       color: AppColors.pink,
-                      onTap: () => Navigator.of(context).pop(),
+                      onTap: () {
+                        ref.read(soundServiceProvider).playSound(SoundType.awesome);
+                        Navigator.of(context).pop();
+                      },
                     ),
                   ],
                 ),

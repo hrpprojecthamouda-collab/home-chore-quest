@@ -9,13 +9,22 @@ import '../theme/app_theme.dart';
 import 'pip_mascot.dart';
 import 'puffy_button.dart';
 
-void showAddQuestBottomSheet(BuildContext context, {QuestCategory? initialCategory}) {
+void showAddQuestBottomSheet(
+  BuildContext context, {
+  QuestCategory? initialCategory,
+  int? editIndex,
+  Quest? questToEdit,
+}) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     enableDrag: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _AddQuestSheet(initialCategory: initialCategory),
+    builder: (_) => _AddQuestSheet(
+      initialCategory: initialCategory,
+      editIndex: editIndex,
+      questToEdit: questToEdit,
+    ),
   );
 }
 
@@ -24,8 +33,10 @@ void showAddQuestDialog(BuildContext context) => showAddQuestBottomSheet(context
 
 class _AddQuestSheet extends ConsumerStatefulWidget {
   final QuestCategory? initialCategory;
+  final int? editIndex;
+  final Quest? questToEdit;
 
-  const _AddQuestSheet({this.initialCategory});
+  const _AddQuestSheet({this.initialCategory, this.editIndex, this.questToEdit});
 
   @override
   ConsumerState<_AddQuestSheet> createState() => _AddQuestSheetState();
@@ -40,7 +51,15 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
   @override
   void initState() {
     super.initState();
-    _category = widget.initialCategory;
+    if (widget.questToEdit != null) {
+      final q = widget.questToEdit!;
+      _nameController.text = q.name;
+      _category = q.category;
+      _xpTier = _tiers.reduce((a, b) =>
+          (a.xp - q.xpReward).abs() < (b.xp - q.xpReward).abs() ? a : b).xp;
+    } else {
+      _category = widget.initialCategory;
+    }
   }
   bool _isSubmitting    = false;
 
@@ -67,12 +86,22 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
     }
     setState(() => _isSubmitting = true);
     try {
-      ref.read(questListProvider.notifier).addQuest(
-        _nameController.text.trim(),
-        _xpTier,
-        _category!,
-      );
-      await ref.read(soundServiceProvider).playSound(SoundType.missionAccepted);
+      if (widget.editIndex != null) {
+        ref.read(questListProvider.notifier).editQuest(
+          widget.editIndex!,
+          _nameController.text.trim(),
+          _xpTier,
+          _category!,
+        );
+        await ref.read(soundServiceProvider).playSound(SoundType.saveConfirm);
+      } else {
+        ref.read(questListProvider.notifier).addQuest(
+          _nameController.text.trim(),
+          _xpTier,
+          _category!,
+        );
+        await ref.read(soundServiceProvider).playSound(SoundType.addQuest);
+      }
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (e) {
@@ -88,13 +117,14 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final keyboardBottom = MediaQuery.of(context).viewInsets.bottom;
+    final navBarBottom   = MediaQuery.of(context).padding.bottom;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
+      padding: EdgeInsets.only(bottom: keyboardBottom),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 12),
-        padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
+        padding: EdgeInsets.fromLTRB(22, 0, 22, 22 + navBarBottom),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -130,8 +160,8 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('New quest!', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
-                      Text("What're we crushing today?", style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+                      Text(widget.questToEdit != null ? 'Edit quest!' : 'New quest!', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+                      Text(widget.questToEdit != null ? 'Tweak it, hero!' : "What're we crushing today?", style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
                     ],
                   ),
                 ],
@@ -235,7 +265,9 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
               ),
               const SizedBox(height: 20),
               PuffyButton(
-                label: _isSubmitting ? 'Adding…' : 'ADD QUEST',
+                label: _isSubmitting
+                    ? (widget.editIndex != null ? 'Saving…' : 'Adding…')
+                    : (widget.editIndex != null ? 'SAVE CHANGES' : 'ADD QUEST'),
                 color: AppColors.pink,
                 onTap: _isSubmitting ? null : _submit,
               ),

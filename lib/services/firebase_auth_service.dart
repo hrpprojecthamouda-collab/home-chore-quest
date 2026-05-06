@@ -7,8 +7,9 @@ class FirebaseAuthService {
   /// Get current authenticated user
   User? get currentUser => _auth.currentUser;
 
-  /// Stream of authentication state changes
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  /// Stream of authentication state changes — uses userChanges() so profile
+  /// updates (displayName, photoURL) also trigger downstream rebuilds.
+  Stream<User?> get authStateChanges => _auth.userChanges();
 
   /// Sign up with email and password
   Future<UserCredential> signUp({

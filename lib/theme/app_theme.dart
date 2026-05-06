@@ -35,36 +35,36 @@ abstract class AppTheme {
 extension QuestCategoryVisual on QuestCategory {
   String get glyph => switch (this) {
     QuestCategory.cleaning  => '🧽',
-    QuestCategory.groceries => '🥦',
+    QuestCategory.groceries => '🍞',
     QuestCategory.bills     => '💸',
-    QuestCategory.upgrades  => '🛠️',
+    QuestCategory.laundry   => '👕',
   };
 
   Color get color1 => switch (this) {
     QuestCategory.cleaning  => AppColors.cyan,
     QuestCategory.groceries => AppColors.green,
     QuestCategory.bills     => AppColors.yellow,
-    QuestCategory.upgrades  => AppColors.pink,
+    QuestCategory.laundry   => const Color(0xFFD9A8FF),
   };
 
   Color get color2 => switch (this) {
     QuestCategory.cleaning  => AppColors.blue,
     QuestCategory.groceries => const Color(0xFF22C563),
     QuestCategory.bills     => const Color(0xFFF59E0B),
-    QuestCategory.upgrades  => AppColors.hotPink,
+    QuestCategory.laundry   => const Color(0xFF9D5CFF),
   };
 
   String get roomLabel => switch (this) {
-    QuestCategory.cleaning  => 'THE DISHWASHER',
+    QuestCategory.cleaning  => 'THE SINK',
     QuestCategory.groceries => 'THE FRIDGE',
     QuestCategory.bills     => 'THE DESK',
-    QuestCategory.upgrades  => 'THE WORKSHOP',
+    QuestCategory.laundry   => 'THE LAUNDRY',
   };
 
   Color get darkBg => switch (this) {
     QuestCategory.cleaning  => const Color(0xFF0F7C99),
     QuestCategory.groceries => const Color(0xFF16894A),
     QuestCategory.bills     => const Color(0xFFA07000),
-    QuestCategory.upgrades  => const Color(0xFFA8125C),
+    QuestCategory.laundry   => const Color(0xFF5A2080),
   };
 }

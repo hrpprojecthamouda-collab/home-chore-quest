@@ -4,9 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/quest.dart';
 import '../providers/game_providers.dart';
+import '../providers/inventory_providers.dart';
 import '../services/sound_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_quest_dialog.dart';
+import '../widgets/quest_detail_sheet.dart';
 import 'celebration_screen.dart';
 
 class CategoryScreen extends ConsumerStatefulWidget {
@@ -70,27 +72,67 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen>
 
   Future<void> _completeQuest(int questIndex, Quest quest) async {
     final sound   = ref.read(soundServiceProvider);
-    final prevXp  = ref.read(xpProvider);
-    final prevLvl = (prevXp ~/ xpPerLevel) + 1;
+    final prevLvl = levelFromXp(ref.read(xpProvider));
 
     ref.read(questListProvider.notifier).completeQuest(questIndex);
     ref.read(xpProvider.notifier).addXp(quest.xpReward);
-    if (quest.isCleanRoomQuest) ref.read(roomCleanProvider.notifier).cleanRoom();
-    await sound.playSound(SoundType.questComplete);
+    if (quest.isCleanRoomQuest) {
+      ref.read(roomCleanProvider.notifier).cleanRoom();
+      ref.read(coinProvider.notifier).addCoins(50);
+    }
 
-    final newXp  = ref.read(xpProvider);
-    final newLvl = (newXp ~/ xpPerLevel) + 1;
+    final newLvl = levelFromXp(ref.read(xpProvider));
 
     if (newLvl > prevLvl) {
-      await Future.delayed(const Duration(milliseconds: 600));
+      ref.read(coinProvider.notifier).addCoins(50);
+      await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
       await sound.playSound(SoundType.levelUp);
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => CelebrationScreen(level: newLvl)),
       );
+    } else if (quest.isCleanRoomQuest) {
+      await sound.playSound(SoundType.questComplete);
+      _showToast('+${quest.xpReward} XP · 🪙50 — Room cleaned!');
     } else {
+      await sound.playSound(SoundType.questComplete);
       _showToast('+${quest.xpReward} XP — Quest done!');
     }
+  }
+
+  void _addQuestSet() {
+    final cat      = widget.category;
+    final notifier = ref.read(questListProvider.notifier);
+
+    final quests = switch (cat) {
+      QuestCategory.groceries => [
+        ('Buy weekly groceries',       30, cat),
+        ('Restock pantry essentials',  20, cat),
+      ],
+      QuestCategory.cleaning => [
+        ('Gather trash from every room',          10, cat),
+        ('Sort and put everything in its place',  20, cat),
+        ('Wipe down all surfaces',                20, cat),
+        ('Take out the trash',                    10, cat),
+      ],
+      _ => <(String, int, QuestCategory)>[],
+    };
+
+    for (final (name, xp, category) in quests) {
+      notifier.addQuest(name, xp, category);
+    }
+    if (quests.isNotEmpty) {
+      ref.read(soundServiceProvider).playSound(SoundType.addQuest);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        '${quests.length} quests added! ✨',
+        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+      ),
+      backgroundColor: cat.color1,
+      duration: const Duration(seconds: 1),
+    ));
   }
 
   // Returns staggered animation value for quest card at [index].
@@ -237,10 +279,49 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen>
                         ).value,
                         child: child,
                       ),
-                      child: Text(
-                        'On your list',
-                        style: GoogleFonts.nunito(
-                            fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+                      child: Row(
+                        children: [
+                          Text(
+                            'On your list',
+                            style: GoogleFonts.nunito(
+                                fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                          const Spacer(),
+                          if (questList.any((q) => q.isCompleted))
+                            GestureDetector(
+                              onTap: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => AlertDialog(
+                                    backgroundColor: AppColors.surface,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    title: Text('Clear history?',
+                                        style: GoogleFonts.nunito(fontWeight: FontWeight.w900, color: Colors.white)),
+                                    content: Text('This will remove all completed quests from this category.',
+                                        style: GoogleFonts.nunito(color: AppColors.muted, fontSize: 13)),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: Text('Cancel', style: GoogleFonts.nunito(color: AppColors.muted)),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          ref.read(questListProvider.notifier).clearCategoryHistory(cat);
+                                          Navigator.pop(context);
+                                        },
+                                        child: Text('Clear', style: GoogleFonts.nunito(color: AppColors.red, fontWeight: FontWeight.w900)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                'Clear history',
+                                style: GoogleFonts.nunito(
+                                    fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.red),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -263,7 +344,9 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen>
                         final i     = entry.key;
                         final quest = entry.value;
                         final realIndex = ref.read(questListProvider).indexOf(quest);
-                        return AnimatedBuilder(
+                        final canEdit = !quest.isCleanRoomQuest && !quest.isCompleted && !quest.isOngoing && realIndex != -1;
+
+                        final animatedCard = AnimatedBuilder(
                           animation: _entryCtrl,
                           builder: (_, child) {
                             final t = _itemT(i);
@@ -279,11 +362,61 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen>
                             padding: const EdgeInsets.only(bottom: 10),
                             child: _CategoryQuestCard(
                               quest: quest,
+                              onDelete: quest.isCompleted && realIndex != -1
+                                  ? () => ref.read(questListProvider.notifier).deleteQuest(realIndex)
+                                  : null,
+                              onTapDetail: () {
+                                if (quest.isOngoing) {
+                                  ref.read(soundServiceProvider).playSound(SoundType.buttonPress);
+                                  ref.read(questListProvider.notifier).cancelQuest(realIndex);
+                                } else if (!quest.isCompleted) {
+                                  ref.read(soundServiceProvider).playSound(SoundType.questDisplay);
+                                  showQuestDetailSheet(
+                                    context,
+                                    quest: quest,
+                                    onComplete: realIndex != -1
+                                        ? () => _completeQuest(realIndex, quest)
+                                        : null,
+                                  );
+                                }
+                              },
+                              onStart: realIndex != -1 && !quest.isCompleted
+                                  ? () {
+                                      ref.read(soundServiceProvider).playSound(SoundType.ongoingQuest);
+                                      ref.read(questListProvider.notifier).startQuest(realIndex);
+                                    }
+                                  : null,
                               onComplete: realIndex != -1
                                   ? () => _completeQuest(realIndex, quest)
                                   : null,
+                              onEdit: canEdit
+                                  ? () => showAddQuestBottomSheet(
+                                      context,
+                                      editIndex: realIndex,
+                                      questToEdit: quest,
+                                    )
+                                  : null,
                             ),
                           ),
+                        );
+
+                        if (!canEdit) return animatedCard;
+                        return Dismissible(
+                          key: ValueKey(quest.id),
+                          direction: DismissDirection.endToStart,
+                          onDismissed: (_) =>
+                              ref.read(questListProvider.notifier).deleteQuest(realIndex),
+                          background: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.red,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(Icons.delete_outline, color: Colors.white, size: 26),
+                          ),
+                          child: animatedCard,
                         );
                       }),
 
@@ -307,6 +440,34 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen>
                         ),
                       ),
                     ),
+
+                    // Add Set button — groceries & cleaning only
+                    if (cat == QuestCategory.groceries || cat == QuestCategory.cleaning) ...[
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: _addQuestSet,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [c1.withOpacity(.15), c2.withOpacity(.15)],
+                            ),
+                            border: Border.all(color: c1.withOpacity(.55), width: 2),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '📋  Add full set',
+                              style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: c1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
 
                     // Weekly bounty card — fades in last
@@ -456,22 +617,42 @@ class _MiniStat extends StatelessWidget {
 
 class _CategoryQuestCard extends StatelessWidget {
   final Quest quest;
+  final VoidCallback? onStart;
   final VoidCallback? onComplete;
+  final VoidCallback? onEdit;
+  final VoidCallback? onTapDetail;
+  final VoidCallback? onDelete;
 
-  const _CategoryQuestCard({required this.quest, this.onComplete});
+  const _CategoryQuestCard({
+    required this.quest,
+    this.onStart,
+    this.onComplete,
+    this.onEdit,
+    this.onTapDetail,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final c1 = quest.category.color1;
-    final c2 = quest.category.color2;
+    final c1      = quest.category.color1;
+    final c2      = quest.category.color2;
+    final ongoing = quest.isOngoing;
 
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: quest.isCompleted ? AppColors.bgDeep : AppColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-        boxShadow: const [BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4))],
+        border: Border.all(
+          color: ongoing ? const Color(0xFFFFAB00) : AppColors.border,
+          width: ongoing ? 1.5 : 1,
+        ),
+        boxShadow: ongoing
+            ? const [
+                BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4)),
+                BoxShadow(color: Color(0x33FFAB00), blurRadius: 8, offset: Offset(0, 2)),
+              ]
+            : const [BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -499,15 +680,25 @@ class _CategoryQuestCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  quest.name,
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: quest.isCompleted ? AppColors.muted : Colors.white,
-                    decoration: quest.isCompleted ? TextDecoration.lineThrough : null,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    if (ongoing) ...[
+                      const Text('⚡', style: TextStyle(fontSize: 11)),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        quest.name,
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: quest.isCompleted ? AppColors.muted : Colors.white,
+                          decoration: quest.isCompleted ? TextDecoration.lineThrough : null,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Container(
@@ -527,20 +718,27 @@ class _CategoryQuestCard extends StatelessWidget {
               ],
             ),
           ),
-          if (!quest.isCompleted && onComplete != null)
+          if (!quest.isCompleted) ...[
+            const SizedBox(width: 10),
             GestureDetector(
-              onTap: onComplete,
-              child: Container(
+              onTap: ongoing ? onComplete : onStart,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                 decoration: BoxDecoration(
-                  color: AppColors.green,
+                  color: ongoing ? const Color(0xFFFFAB00) : AppColors.green,
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0xFF22894A), offset: Offset(0, 3))
+                  boxShadow: [
+                    BoxShadow(
+                      color: ongoing
+                          ? const Color(0xFFCC8800)
+                          : const Color(0xFF22894A),
+                      offset: const Offset(0, 3),
+                    ),
                   ],
                 ),
                 child: Text(
-                  'DO IT',
+                  ongoing ? 'DONE!' : 'START QUEST',
                   style: GoogleFonts.nunito(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
@@ -548,13 +746,27 @@ class _CategoryQuestCard extends StatelessWidget {
                 ),
               ),
             ),
-          if (quest.isCompleted)
+          ],
+          if (quest.isCompleted) ...[
             const Padding(
               padding: EdgeInsets.only(left: 8),
               child: Icon(Icons.check_circle, color: AppColors.green, size: 22),
             ),
+            GestureDetector(
+              onTap: onDelete,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: Icon(Icons.delete_outline, color: AppColors.muted, size: 20),
+              ),
+            ),
+          ],
         ],
       ),
+    );
+    return GestureDetector(
+      onTap: onTapDetail,
+      onLongPress: onEdit,
+      child: card,
     );
   }
 }

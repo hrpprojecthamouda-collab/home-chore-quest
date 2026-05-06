@@ -1,10 +1,13 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_providers.dart';
 import '../theme/app_theme.dart';
+import '../utils/auth_errors.dart';
 import '../widgets/pip_mascot.dart';
 import '../widgets/puffy_button.dart';
+import 'welcome_back_screen.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -13,7 +16,8 @@ class SignupScreen extends ConsumerStatefulWidget {
   ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends ConsumerState<SignupScreen> {
+class _SignupScreenState extends ConsumerState<SignupScreen>
+    with TickerProviderStateMixin {
   final _emailController    = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -23,7 +27,21 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   bool _isLoading           = false;
   int _selectedMood         = 0;
 
+  bool _signupDone  = false;
+  int _successPhase = 0;
+  late final AnimationController _checkCtrl;
+  late final AnimationController _barCtrl;
+  late final AnimationController _panelCtrl;
+
   static const _moods = ['😎', '😴', '🤓', '🧙'];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _barCtrl   = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    _panelCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
+  }
 
   @override
   void dispose() {
@@ -31,15 +49,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
+    _checkCtrl.dispose();
+    _barCtrl.dispose();
+    _panelCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
     if (_passwordController.text != _confirmController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match'), backgroundColor: AppColors.red),
-      );
+      _showError("Those passwords don't match. Give it another look.");
       return;
     }
     setState(() => _isLoading = true);
@@ -49,19 +68,218 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         password: _passwordController.text,
         username: _usernameController.text.trim(),
       );
+      if (!mounted) return;
+      _startSuccess();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.red),
-        );
+        _showError(friendlyAuthError(e));
+        setState(() => _isLoading = false);
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: AppColors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      ),
+    );
+  }
+
+  void _startSuccess() {
+    setState(() => _signupDone = true);
+    _checkCtrl.forward();
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _successPhase = 1);
+    });
+    Future.delayed(const Duration(milliseconds: 1100), () {
+      if (!mounted) return;
+      setState(() => _successPhase = 2);
+      _barCtrl.forward();
+    });
+    Future.delayed(const Duration(milliseconds: 1900), () {
+      if (!mounted) return;
+      setState(() => _successPhase = 3);
+      _panelCtrl.forward();
+    });
+    Future.delayed(const Duration(milliseconds: 3400), () {
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeBackScreen()),
+        (r) => false,
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_signupDone) return _buildSuccessScaffold(context);
+    return _buildFormScaffold(context);
+  }
+
+  Widget _buildSuccessScaffold(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0, -.3),
+            radius: 1.1,
+            colors: [AppColors.violet, AppColors.bgDeep],
+          ),
+        ),
+        child: Stack(
+          children: [
+            if (_successPhase >= 1)
+              const Positioned.fill(child: _ConfettiLayer()),
+
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedBuilder(
+                    animation: _checkCtrl,
+                    builder: (_, __) {
+                      final t = CurvedAnimation(
+                        parent: _checkCtrl,
+                        curve: Curves.elasticOut,
+                      ).value;
+                      return Transform.scale(
+                        scale: t,
+                        child: Container(
+                          width: 90,
+                          height: 90,
+                          decoration: BoxDecoration(
+                            color: AppColors.green,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.green.withOpacity(.5),
+                                blurRadius: 30,
+                                spreadRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.check_rounded, color: Colors.white, size: 52),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  AnimatedOpacity(
+                    opacity: _successPhase >= 1 ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 400),
+                    child: AnimatedSlide(
+                      offset: _successPhase >= 1 ? Offset.zero : const Offset(0, 0.3),
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOut,
+                      child: const PipMascot(size: 100, wave: true),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  AnimatedOpacity(
+                    opacity: _successPhase >= 1 ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 400),
+                    child: Text(
+                      "You're in, hero!",
+                      style: GoogleFonts.nunito(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  if (_successPhase >= 2)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 48),
+                      child: Column(
+                        children: [
+                          AnimatedBuilder(
+                            animation: _barCtrl,
+                            builder: (_, __) {
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  value: CurvedAnimation(
+                                    parent: _barCtrl,
+                                    curve: Curves.easeInOut,
+                                  ).value,
+                                  minHeight: 8,
+                                  backgroundColor: AppColors.surface2,
+                                  valueColor: const AlwaysStoppedAnimation(AppColors.green),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Setting up your room…',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            AnimatedBuilder(
+              animation: _panelCtrl,
+              builder: (_, __) {
+                final t = CurvedAnimation(parent: _panelCtrl, curve: Curves.easeOut).value;
+                return Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - t) * 120),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 28),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                        border: Border.all(color: AppColors.border),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x669D5CFF), blurRadius: 40, offset: Offset(0, -8)),
+                        ],
+                      ),
+                      child: Text(
+                        'Logging you in… ✨',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.nunito(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormScaffold(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -107,7 +325,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Pip + speech bubble
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -189,7 +406,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                // Mood picker
                 Text(
                   'Pick your starter mood',
                   style: GoogleFonts.nunito(
@@ -229,7 +445,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 ),
                 const SizedBox(height: 22),
                 PuffyButton(
-                  label: 'START ADVENTURE',
+                  label: _isLoading ? 'Creating account…' : 'START ADVENTURE',
                   color: AppColors.pink,
                   onTap: _isLoading ? null : _handleSignup,
                 ),
@@ -335,4 +551,74 @@ class _SignupField extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ConfettiLayer extends StatefulWidget {
+  const _ConfettiLayer();
+
+  @override
+  State<_ConfettiLayer> createState() => _ConfettiLayerState();
+}
+
+class _ConfettiLayerState extends State<_ConfettiLayer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  static final _rng = math.Random(42);
+  static final _dots = List.generate(14, (i) => (
+    x: _rng.nextDouble(),
+    y: _rng.nextDouble() * 0.5,
+    color: [
+      AppColors.pink, AppColors.cyan, AppColors.yellow,
+      AppColors.green, AppColors.violet,
+    ][i % 5],
+    size: 5.0 + _rng.nextDouble() * 5,
+    vx: (_rng.nextDouble() - 0.5) * 0.3,
+    vy: 0.1 + _rng.nextDouble() * 0.2,
+  ));
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) => CustomPaint(
+        painter: _ConfettiPainter(_ctrl.value, _dots),
+      ),
+    );
+  }
+}
+
+class _ConfettiPainter extends CustomPainter {
+  final double t;
+  final List<({double x, double y, Color color, double size, double vx, double vy})> dots;
+
+  const _ConfettiPainter(this.t, this.dots);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final d in dots) {
+      final px = (d.x + d.vx * t) % 1.0;
+      final py = (d.y + d.vy * t) % 1.0;
+      canvas.drawCircle(
+        Offset(px * size.width, py * size.height),
+        d.size,
+        Paint()..color = d.color.withOpacity(0.85),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => old.t != t;
 }
