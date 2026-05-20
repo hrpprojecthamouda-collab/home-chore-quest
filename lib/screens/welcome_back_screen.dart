@@ -10,7 +10,11 @@ import '../widgets/pip_mascot.dart';
 import '../widgets/puffy_button.dart';
 
 class WelcomeBackScreen extends ConsumerStatefulWidget {
-  const WelcomeBackScreen({super.key});
+  /// True when shown right after signup — flips the headline + subtitle
+  /// to greet a new player instead of welcoming a returning one.
+  final bool isNew;
+
+  const WelcomeBackScreen({super.key, this.isNew = false});
 
   @override
   ConsumerState<WelcomeBackScreen> createState() => _WelcomeBackScreenState();
@@ -262,7 +266,7 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'WELCOME BACK',
+              widget.isNew ? 'WELCOME' : 'WELCOME BACK',
               style: GoogleFonts.nunito(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -289,7 +293,9 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen>
             ),
             const SizedBox(height: 6),
             Text(
-              'Pip kept the room safe ✨',
+              widget.isNew
+                  ? "Pip's been waiting to meet you ✨"
+                  : 'Pip kept the room safe ✨',
               style: GoogleFonts.nunito(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -494,6 +500,7 @@ class _WelcomeBackScreenState extends ConsumerState<WelcomeBackScreen>
               color: AppColors.pink,
               onTap: _claimAndEnter,
             ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
           ],
         ),
       ),

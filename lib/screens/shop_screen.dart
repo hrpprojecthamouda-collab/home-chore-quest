@@ -20,7 +20,6 @@ class ShopScreen extends ConsumerWidget {
       child: NestedScrollView(
           headerSliverBuilder: (_, __) => [
             SliverToBoxAdapter(child: _ShopHeader(coins: coins)),
-            SliverToBoxAdapter(child: _FeaturedDeal(coins: coins, ownedItems: ownedItems)),
             SliverPersistentHeader(
               pinned: true,
               delegate: _TabBarDelegate(
@@ -88,15 +87,28 @@ const _boostItems = <_ShopItem>[
 ];
 
 const _furnitureItems = <_ShopItem>[
-  (id: 'vacuum_sakura',   name: 'Sakura Vacuum',    icon: '🌸', price: 80,  lockLevel: null),
-  (id: 'vacuum_midnight', name: 'Midnight Vacuum',  icon: '🌑', price: 120, lockLevel: 3),
-  (id: 'vacuum_sunburst', name: 'Sunburst Vacuum',  icon: '☀️', price: 100, lockLevel: null),
-  (id: 'fridge_arctic',   name: 'Arctic Fridge',    icon: '🧊', price: 80,  lockLevel: null),
-  (id: 'fridge_emerald',  name: 'Emerald Fridge',   icon: '💚', price: 100, lockLevel: null),
-  (id: 'fridge_rose',     name: 'Rose Gold Fridge', icon: '🌹', price: 150, lockLevel: 5),
-  (id: 'washer_ocean',    name: 'Ocean Washer',      icon: '🌊', price: 80,  lockLevel: null),
-  (id: 'washer_carbon',   name: 'Carbon Washer',    icon: '🖤', price: 120, lockLevel: 3),
-  (id: 'washer_neon',     name: 'Neon Washer',      icon: '💜', price: 150, lockLevel: 5),
+  // Living room.
+  (id: 'vacuum_sakura',    name: 'Sakura Vacuum',     icon: '🌸', price: 80,  lockLevel: null),
+  (id: 'vacuum_midnight',  name: 'Midnight Vacuum',   icon: '🌑', price: 120, lockLevel: 3),
+  (id: 'vacuum_sunburst',  name: 'Sunburst Vacuum',   icon: '☀️', price: 100, lockLevel: null),
+  (id: 'fridge_arctic',    name: 'Arctic Fridge',     icon: '🧊', price: 80,  lockLevel: null),
+  (id: 'fridge_emerald',   name: 'Emerald Fridge',    icon: '💚', price: 100, lockLevel: null),
+  (id: 'fridge_rose',      name: 'Rose Gold Fridge',  icon: '🌹', price: 150, lockLevel: 5),
+  // Bathroom.
+  (id: 'washer_ocean',     name: 'Ocean Washer',      icon: '🌊', price: 80,  lockLevel: null),
+  (id: 'washer_carbon',    name: 'Carbon Washer',     icon: '🖤', price: 120, lockLevel: 3),
+  (id: 'washer_neon',      name: 'Neon Washer',       icon: '💜', price: 150, lockLevel: 5),
+  (id: 'toilet_matte',     name: 'Matte Toilet',      icon: '⬛', price: 100, lockLevel: null),
+  (id: 'toilet_marble',    name: 'Marble Toilet',     icon: '🪨', price: 140, lockLevel: 5),
+  (id: 'mirror_brass',     name: 'Brass Mirror',      icon: '✨', price: 90,  lockLevel: null),
+  (id: 'mirror_chrome',    name: 'Chrome Mirror',     icon: '🔩', price: 120, lockLevel: 3),
+  // Bedroom.
+  (id: 'bed_rose',         name: 'Rose Velvet Bed',   icon: '🌹', price: 90,  lockLevel: null),
+  (id: 'bed_emerald',      name: 'Emerald Bed',       icon: '💚', price: 120, lockLevel: 5),
+  (id: 'desk_oak',         name: 'Light Oak Desk',    icon: '🌾', price: 80,  lockLevel: null),
+  (id: 'desk_mahogany',    name: 'Mahogany Desk',     icon: '🍷', price: 110, lockLevel: 3),
+  (id: 'wardrobe_pine',    name: 'Pine Wardrobe',     icon: '🌲', price: 80,  lockLevel: null),
+  (id: 'wardrobe_lacquer', name: 'Lacquer Wardrobe',  icon: '✨', price: 130, lockLevel: 5),
 ];
 
 // ── Header ───────────────────────────────────────────────────
@@ -143,83 +155,6 @@ class _ShopHeader extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Featured deal ────────────────────────────────────────────
-class _FeaturedDeal extends ConsumerWidget {
-  final int coins;
-  final Set<String> ownedItems;
-  const _FeaturedDeal({required this.coins, required this.ownedItems});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    const featuredId = 'cosmic_wallpaper';
-    final owned = ownedItems.contains(featuredId);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.pink, AppColors.violet],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: const [
-            BoxShadow(color: Color(0x669D5CFF), blurRadius: 20, offset: Offset(0, 4)),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Text('🌌', style: TextStyle(fontSize: 40)),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(.2),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'FEATURED DEAL',
-                      style: GoogleFonts.nunito(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.8),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Cosmic Wallpaper', style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
-                  Row(
-                    children: [
-                      Text(
-                        '10',
-                        style: GoogleFonts.nunito(
-                          fontSize: 12, fontWeight: FontWeight.w700,
-                          color: Colors.white.withOpacity(.6),
-                          decoration: TextDecoration.lineThrough,
-                          decorationColor: Colors.white.withOpacity(.6),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const _CoinIcon(size: 13),
-                      const SizedBox(width: 3),
-                      Text('5', style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.yellow)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            owned
-                ? _OwnedBadge()
-                : _BuyButton(id: featuredId, price: 5, coins: coins),
-          ],
-        ),
       ),
     );
   }

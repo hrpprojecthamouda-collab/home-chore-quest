@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../animation/reward_choreographer.dart';
+import '../animation/reward_controllers.dart';
 import '../models/quest.dart';
 import '../providers/game_providers.dart';
-import '../providers/inventory_providers.dart';
 import '../services/sound_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/quest_completion.dart';
 import '../widgets/add_quest_dialog.dart';
 import '../widgets/quest_detail_sheet.dart';
-import 'celebration_screen.dart';
+import '../widgets/reward_overlay_header.dart';
 
 class AllQuestsScreen extends ConsumerStatefulWidget {
   const AllQuestsScreen({super.key});
@@ -19,30 +21,37 @@ class AllQuestsScreen extends ConsumerStatefulWidget {
 }
 
 class _AllQuestsScreenState extends ConsumerState<AllQuestsScreen> {
+  // Reward animation controllers + orchestrator.
+  final PipController _pipCtrl = PipController();
+  final CoinChipController _coinCtrl = CoinChipController();
+  final XpBarController _xpCtrl = XpBarController();
+  late final RewardChoreographer _choreographer;
 
-  Future<void> _completeQuest(int index, Quest quest) async {
-    final sound   = ref.read(soundServiceProvider);
-    final prevLvl = levelFromXp(ref.read(xpProvider));
+  @override
+  void initState() {
+    super.initState();
+    _choreographer = RewardChoreographer(
+      pip: _pipCtrl,
+      coin: _coinCtrl,
+      xp: _xpCtrl,
+      sound: ref.read(soundServiceProvider),
+    );
+  }
 
-    ref.read(questListProvider.notifier).completeQuest(index);
-    ref.read(xpProvider.notifier).addXp(quest.xpReward);
-    if (quest.isCleanRoomQuest) {
-      ref.read(roomCleanProvider.notifier).cleanRoom();
-      ref.read(coinProvider.notifier).addCoins(50);
-    }
+  @override
+  void dispose() {
+    _choreographer.cancel();
+    super.dispose();
+  }
 
-    final newLvl = levelFromXp(ref.read(xpProvider));
-    if (newLvl > prevLvl) {
-      ref.read(coinProvider.notifier).addCoins(50);
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
-      await sound.playSound(SoundType.levelUp);
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => CelebrationScreen(level: newLvl)),
-      );
-    } else {
-      await sound.playSound(SoundType.questComplete);
-    }
+  Future<void> _completeQuest(int index, Quest quest) {
+    return runQuestCompletion(
+      ref: ref,
+      choreographer: _choreographer,
+      context: context,
+      index: index,
+      quest: quest,
+    );
   }
 
   @override
@@ -59,13 +68,18 @@ class _AllQuestsScreenState extends ConsumerState<AllQuestsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: CustomScrollView(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: CustomScrollView(
           slivers: [
             // ── Header ─────────────────────────────────────────────
+            // Top spacing accounts for the reward cluster overlay
+            // (PipWithItems size 56 ≈ 68px tall + row padding ≈ 82px) with
+            // a touch of breathing.
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                padding: const EdgeInsets.fromLTRB(16, 100, 16, 4),
                 child: Row(
                   children: [
                     GestureDetector(
@@ -304,6 +318,36 @@ class _AllQuestsScreenState extends ConsumerState<AllQuestsScreen> {
           ],
         ),
       ),
+          // Reward cluster pinned to safe-area top — Pip, XP bar and coin
+          // chip live together so the celebration plays in one cohesive zone
+          // right where the player's eye is after tapping DONE.
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Container(
+                color: Colors.black.withOpacity(0.35),
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    RewardCornerPip(controller: _pipCtrl, size: 56),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: RewardOverlayHeader(
+                        xpController: _xpCtrl,
+                        showXpLabels: false,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    RewardCoinChip(controller: _coinCtrl),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -415,7 +459,9 @@ class _QuestCard extends StatelessWidget {
               onTap: ongoing ? onComplete : onStart,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                width: 96,
+                height: 36,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: ongoing ? const Color(0xFFFFAB00) : AppColors.green,
                   borderRadius: BorderRadius.circular(12),

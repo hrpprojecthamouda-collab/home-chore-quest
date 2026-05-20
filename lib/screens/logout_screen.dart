@@ -114,8 +114,8 @@ class _LogoutScreenState extends ConsumerState<LogoutScreen>
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 600),
                         child: _sleeping
-                            ? const PipMascot(key: ValueKey('sleep'), size: 110, mood: 'sleep')
-                            : const PipMascot(key: ValueKey('wave'), size: 110, wave: true),
+                            ? const PipWithItems(key: ValueKey('sleep'), size: 110, mood: 'sleep')
+                            : const PipWithItems(key: ValueKey('wave'), size: 110, wave: true),
                       ),
                       const SizedBox(height: 22),
 

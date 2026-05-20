@@ -25,7 +25,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   final _formKey            = GlobalKey<FormState>();
   bool _isPasswordVisible   = false;
   bool _isLoading           = false;
-  int _selectedMood         = 0;
 
   bool _signupDone  = false;
   int _successPhase = 0;
@@ -33,7 +32,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   late final AnimationController _barCtrl;
   late final AnimationController _panelCtrl;
 
-  static const _moods = ['😎', '😴', '🤓', '🧙'];
 
   @override
   void initState() {
@@ -117,7 +115,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
     Future.delayed(const Duration(milliseconds: 3400), () {
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const WelcomeBackScreen()),
+        MaterialPageRoute(builder: (_) => const WelcomeBackScreen(isNew: true)),
         (r) => false,
       );
     });
@@ -402,46 +400,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                   obscureText: true,
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Confirm your password';
+                    if (v != _passwordController.text) return 'Passwords don\'t match';
                     return null;
                   },
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Pick your starter mood',
-                  style: GoogleFonts.nunito(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: List.generate(_moods.length, (i) {
-                    final selected = i == _selectedMood;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _selectedMood = i),
-                        child: Container(
-                          margin: EdgeInsets.only(right: i < _moods.length - 1 ? 8 : 0),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: selected ? AppColors.violet : AppColors.bgDeep,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: selected ? AppColors.pink : Colors.transparent,
-                              width: 2,
-                            ),
-                            boxShadow: selected
-                                ? [const BoxShadow(color: Color(0xFF5B2EB5), offset: Offset(0, 4))]
-                                : [const BoxShadow(color: Color(0x4D000000), offset: Offset(0, 3))],
-                          ),
-                          child: Center(
-                            child: Text(_moods[i], style: const TextStyle(fontSize: 26)),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
                 ),
                 const SizedBox(height: 22),
                 PuffyButton(

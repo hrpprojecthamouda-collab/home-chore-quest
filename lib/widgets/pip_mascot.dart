@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../animation/reward_controllers.dart';
 import '../providers/inventory_providers.dart';
 
 // Glyph lookup shared across Pip preview and home screen overlay
@@ -27,6 +28,7 @@ class PipMascot extends StatefulWidget {
   final bool hat;
   final bool wave;
   final String mood; // 'happy' | 'sleep'
+  final PipController? controller;
 
   const PipMascot({
     super.key,
@@ -34,6 +36,7 @@ class PipMascot extends StatefulWidget {
     this.hat = false,
     this.wave = false,
     this.mood = 'happy',
+    this.controller,
   });
 
   @override
@@ -41,9 +44,12 @@ class PipMascot extends StatefulWidget {
 }
 
 class _PipMascotState extends State<PipMascot>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _waveCtrl;
   late final Animation<double> _waveAnim;
+  // Drives the celebration reaction: jump + squash + glow halo + sparkles,
+  // ~700ms. Triggered by the choreographer via PipController.reactHappy().
+  late final AnimationController _reactCtrl;
 
   @override
   void initState() {
@@ -54,6 +60,14 @@ class _PipMascotState extends State<PipMascot>
     );
     _waveAnim = CurvedAnimation(parent: _waveCtrl, curve: Curves.easeInOut);
     if (widget.wave) _waveCtrl.repeat(reverse: true);
+
+    _reactCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    widget.controller?.attach(() async {
+      await _reactCtrl.forward(from: 0);
+    });
   }
 
   @override
@@ -67,31 +81,191 @@ class _PipMascotState extends State<PipMascot>
         _waveCtrl.value = 0;
       }
     }
+    if (widget.controller != old.controller) {
+      old.controller?.detach();
+      widget.controller?.attach(() async {
+        await _reactCtrl.forward(from: 0);
+      });
+    }
   }
 
   @override
   void dispose() {
+    widget.controller?.detach();
     _waveCtrl.dispose();
+    _reactCtrl.dispose();
     super.dispose();
+  }
+
+  // Jump trajectory — parabola peaking at t≈0.45 at -22 (height proportional
+  // to Pip's size so it scales with her). Returns a vertical offset in
+  // logical pixels (negative = up).
+  double _reactJump(double t) {
+    if (t <= 0 || t >= 1) return 0;
+    // Asymmetric parabola: longer take-off, snappier landing.
+    final shifted = (t - 0.45) / 0.55;
+    final tri = 1.0 - shifted * shifted;
+    return -widget.size * 0.30 * tri.clamp(0.0, 1.0);
+  }
+
+  // Anisotropic scale: small squash on takeoff/landing, stretch at peak.
+  // Returns (scaleX, scaleY). At rest both = 1.
+  (double, double) _reactSquash(double t) {
+    if (t <= 0 || t >= 1) return (1, 1);
+    // Takeoff squash (compress vertically): peaks at t≈0.10
+    final takeoff = (1 - (t - 0.10).abs() * 12).clamp(0.0, 1.0);
+    // Air-stretch (slim vertically up): peaks at t≈0.45
+    final stretch = (1 - (t - 0.45).abs() * 4).clamp(0.0, 1.0);
+    // Landing squash: peaks at t≈0.85
+    final landing = (1 - (t - 0.85).abs() * 10).clamp(0.0, 1.0);
+
+    final sx = 1.0 + 0.10 * takeoff - 0.08 * stretch + 0.12 * landing;
+    final sy = 1.0 - 0.12 * takeoff + 0.12 * stretch - 0.10 * landing;
+    return (sx, sy);
+  }
+
+  // Glow halo opacity 0 → peak → 0, peaking around mid-jump.
+  double _reactGlow(double t) {
+    if (t <= 0 || t >= 1) return 0;
+    final tri = 1.0 - (t - 0.45).abs() / 0.45;
+    return Curves.easeOutCubic.transform(tri.clamp(0.0, 1.0));
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _waveAnim,
-      builder: (_, __) => SizedBox(
-        width: widget.size,
-        height: widget.size,
-        child: CustomPaint(
-          painter: _PipPainter(
-            hat: widget.hat,
-            waveT: _waveAnim.value,
-            mood: widget.mood,
+      animation: Listenable.merge([_waveAnim, _reactCtrl]),
+      builder: (_, __) {
+        final t = _reactCtrl.value;
+        final jump = _reactJump(t);
+        final (sx, sy) = _reactSquash(t);
+        final glow = _reactGlow(t);
+        // Widget size stays exactly size × size so callers' layout math is
+        // unaffected. Glow + sparkles are painted via OverflowBox so they
+        // can spill into the surrounding Stack/Positioned space.
+        return SizedBox(
+          width: widget.size,
+          height: widget.size,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              // Glow halo + sparkles behind Pip — overflow the bounds so
+              // the celebration is visible regardless of where Pip is placed.
+              if (glow > 0)
+                Positioned.fill(
+                  child: OverflowBox(
+                    maxWidth: widget.size * 2.4,
+                    maxHeight: widget.size * 2.4,
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _PipReactionOverlay(t: t, glow: glow),
+                      ),
+                    ),
+                  ),
+                ),
+              // Pip body: jump + squash, with the body itself anchored to
+              // the bottom so the jump reads as her leaving the ground.
+              Transform.translate(
+                offset: Offset(0, jump),
+                child: Transform.scale(
+                  scaleX: sx,
+                  scaleY: sy,
+                  child: SizedBox(
+                    width: widget.size,
+                    height: widget.size,
+                    child: CustomPaint(
+                      painter: _PipPainter(
+                        hat: widget.hat,
+                        waveT: _waveAnim.value,
+                        mood: widget.mood,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
+}
+
+// Painted overlay drawn behind Pip during the celebration reaction: a
+// concentric glow halo + 5 sparkle particles that radiate outward.
+class _PipReactionOverlay extends CustomPainter {
+  final double t;     // 0..1 reaction progress
+  final double glow;  // 0..1 halo intensity (derived from t)
+
+  const _PipReactionOverlay({required this.t, required this.glow});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final pipRadius = math.min(size.width, size.height) / 2 / 2.4;
+
+    // ── Glow halo: layered radial gradient, scaling up as it fades.
+    final haloR = pipRadius * (1.4 + 0.9 * t);
+    final haloRect = Rect.fromCircle(center: Offset(cx, cy), radius: haloR);
+    canvas.drawCircle(
+      Offset(cx, cy),
+      haloR,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFFFFE066).withOpacity(0.55 * glow),
+            const Color(0xFFFFB347).withOpacity(0.30 * glow),
+            const Color(0xFFFF6BAA).withOpacity(0.0),
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ).createShader(haloRect),
+    );
+
+    // Soft inner core
+    canvas.drawCircle(
+      Offset(cx, cy),
+      pipRadius * 1.1,
+      Paint()
+        ..color = Colors.white.withOpacity(0.18 * glow)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+
+    // ── Sparkle particles radiating outward.
+    // Five star sparkles at fixed angles, each riding out then in.
+    const sparkleCount = 5;
+    final sparkleR = pipRadius * (0.9 + 1.1 * t);
+    // Each sparkle fades in 0.1..0.7 of the reaction.
+    final sparkleAlpha =
+        Curves.easeOutCubic.transform((t * 1.4).clamp(0.0, 1.0)) *
+        (1 - Curves.easeInCubic.transform(((t - 0.55) / 0.45).clamp(0.0, 1.0)));
+
+    for (int i = 0; i < sparkleCount; i++) {
+      final a = (i / sparkleCount) * 2 * math.pi - math.pi / 2;
+      final px = cx + math.cos(a) * sparkleR;
+      final py = cy + math.sin(a) * sparkleR;
+      _drawSparkle(canvas, Offset(px, py), pipRadius * 0.18, sparkleAlpha);
+    }
+  }
+
+  void _drawSparkle(Canvas canvas, Offset c, double r, double alpha) {
+    if (alpha <= 0) return;
+    final color = const Color(0xFFFFE066).withOpacity(alpha.clamp(0.0, 1.0));
+    final paint = Paint()
+      ..color = color
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = r * 0.35;
+    // Four-point star: a vertical line and a horizontal line, plus a small
+    // center dot for a sharper sparkle look.
+    canvas.drawLine(c + Offset(0, -r), c + Offset(0, r), paint);
+    canvas.drawLine(c + Offset(-r, 0), c + Offset(r, 0), paint);
+    canvas.drawCircle(c, r * 0.22, Paint()..color = Colors.white.withOpacity(alpha.clamp(0.0, 1.0)));
+  }
+
+  @override
+  bool shouldRepaint(_PipReactionOverlay old) =>
+      old.t != t || old.glow != glow;
 }
 
 class _PipPainter extends CustomPainter {
@@ -225,34 +399,174 @@ class _PipPainter extends CustomPainter {
 
 // Pip with painted accessory overlays.
 // If [equipped] is provided it is used directly; otherwise reads equippedPipProvider.
-class PipWithItems extends ConsumerWidget {
+//
+// The celebration reaction (jump + squash + glow halo + sparkles) is hosted
+// at this level — not inside the inner [PipMascot] — so the equipped hat and
+// costume travel with the body. When a [controller] is attached, the inner
+// PipMascot is told NOT to react (to avoid double-animating).
+class PipWithItems extends ConsumerStatefulWidget {
   final double size;
   final Map<String, String>? equipped;
+  final PipController? controller;
+  // Forwarded to the inner PipMascot so callers can drop in PipWithItems
+  // wherever they used PipMascot before.
+  final bool hat;   // legacy yellow triangle hat (used by celebration only)
+  final bool wave;
+  final String mood; // 'happy' | 'sleep'
 
-  const PipWithItems({super.key, this.size = 80, this.equipped});
+  const PipWithItems({
+    super.key,
+    this.size = 80,
+    this.equipped,
+    this.controller,
+    this.hat = false,
+    this.wave = false,
+    this.mood = 'happy',
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final Map<String, String> eq = equipped ?? ref.watch(equippedPipProvider);
+  ConsumerState<PipWithItems> createState() => _PipWithItemsState();
+}
+
+class _PipWithItemsState extends ConsumerState<PipWithItems>
+    with SingleTickerProviderStateMixin {
+  // Drives the celebration reaction at the OUTER level so the body + hat
+  // + costume all transform together. Same duration/curves as PipMascot's
+  // reaction so callers see consistent timing.
+  late final AnimationController _reactCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _reactCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    widget.controller?.attach(() async {
+      await _reactCtrl.forward(from: 0);
+    });
+  }
+
+  @override
+  void didUpdateWidget(PipWithItems old) {
+    super.didUpdateWidget(old);
+    if (widget.controller != old.controller) {
+      old.controller?.detach();
+      widget.controller?.attach(() async {
+        await _reactCtrl.forward(from: 0);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.detach();
+    _reactCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Reaction curves (identical to PipMascot's so timing matches when used
+  //    standalone without PipWithItems).
+  double _reactJump(double t) {
+    if (t <= 0 || t >= 1) return 0;
+    final shifted = (t - 0.45) / 0.55;
+    final tri = 1.0 - shifted * shifted;
+    return -widget.size * 0.30 * tri.clamp(0.0, 1.0);
+  }
+
+  (double, double) _reactSquash(double t) {
+    if (t <= 0 || t >= 1) return (1, 1);
+    final takeoff = (1 - (t - 0.10).abs() * 12).clamp(0.0, 1.0);
+    final stretch = (1 - (t - 0.45).abs() * 4).clamp(0.0, 1.0);
+    final landing = (1 - (t - 0.85).abs() * 10).clamp(0.0, 1.0);
+    final sx = 1.0 + 0.10 * takeoff - 0.08 * stretch + 0.12 * landing;
+    final sy = 1.0 - 0.12 * takeoff + 0.12 * stretch - 0.10 * landing;
+    return (sx, sy);
+  }
+
+  double _reactGlow(double t) {
+    if (t <= 0 || t >= 1) return 0;
+    final tri = 1.0 - (t - 0.45).abs() / 0.45;
+    return Curves.easeOutCubic.transform(tri.clamp(0.0, 1.0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, String> eq =
+        widget.equipped ?? ref.watch(equippedPipProvider);
+    final size = widget.size;
     final extra = size * 0.22;
 
     return SizedBox(
       width: size,
       height: size + extra,
-      child: Stack(
-        children: [
-          Positioned(bottom: 0, left: 0, right: 0, child: PipMascot(size: size)),
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _AccessoryPainter(
-                hatId:     eq['hat']     ?? 'none',
-                costumeId: eq['costume'] ?? 'none',
-                bo: extra,
-                bs: size,
+      child: AnimatedBuilder(
+        animation: _reactCtrl,
+        builder: (_, __) {
+          final t = _reactCtrl.value;
+          final jump = _reactJump(t);
+          final (sx, sy) = _reactSquash(t);
+          final glow = _reactGlow(t);
+
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Glow halo + sparkles overflow the bounds so the celebration
+              // is visible regardless of where Pip is placed. Drawn behind
+              // the body + accessories.
+              if (glow > 0)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: OverflowBox(
+                      maxWidth: size * 2.4,
+                      maxHeight: size * 2.4,
+                      child: Transform.translate(
+                        offset: Offset(0, jump),
+                        child: CustomPaint(
+                          painter: _PipReactionOverlay(t: t, glow: glow),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Body + accessories transformed together so the hat and
+              // costume follow Pip during the jump.
+              Transform.translate(
+                offset: Offset(0, jump),
+                child: Transform.scale(
+                  scaleX: sx,
+                  scaleY: sy,
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        bottom: 0, left: 0, right: 0,
+                        // Inner mascot has no controller — outer PipWithItems
+                        // owns the reaction now to keep accessories in sync.
+                        child: PipMascot(
+                          size: size,
+                          hat: widget.hat,
+                          wave: widget.wave,
+                          mood: widget.mood,
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: _AccessoryPainter(
+                            hatId:     eq['hat']     ?? 'none',
+                            costumeId: eq['costume'] ?? 'none',
+                            bo: extra,
+                            bs: size,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }

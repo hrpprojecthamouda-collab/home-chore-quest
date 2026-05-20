@@ -119,12 +119,17 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
   Widget build(BuildContext context) {
     final keyboardBottom = MediaQuery.of(context).viewInsets.bottom;
     final navBarBottom   = MediaQuery.of(context).padding.bottom;
+    // Hide the category picker when adding from a category screen — the
+    // category is already locked in via initialCategory. Still show it when
+    // adding from the quest board (no initialCategory) or when editing.
+    final hideCategoryPicker =
+        widget.initialCategory != null && widget.editIndex == null;
 
     return Padding(
       padding: EdgeInsets.only(bottom: keyboardBottom),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 12),
-        padding: EdgeInsets.fromLTRB(22, 0, 22, 22 + navBarBottom),
+        padding: EdgeInsets.fromLTRB(22, 0, 22, 14 + navBarBottom),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -144,7 +149,7 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
               children: [
               Center(
                 child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 14),
+                  margin: const EdgeInsets.symmetric(vertical: 8),
                   width: 44,
                   height: 5,
                   decoration: BoxDecoration(
@@ -155,18 +160,18 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
               ),
               Row(
                 children: [
-                  const PipMascot(size: 56),
+                  const PipWithItems(size: 48),
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.questToEdit != null ? 'Edit quest!' : 'New quest!', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
-                      Text(widget.questToEdit != null ? 'Tweak it, hero!' : "What're we crushing today?", style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+                      Text(widget.questToEdit != null ? 'Edit quest!' : 'New quest!', style: GoogleFonts.nunito(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white)),
+                      Text(widget.questToEdit != null ? 'Tweak it, hero!' : "What're we crushing today?", style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted)),
                     ],
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               _SheetField(
                 label: 'Quest',
                 hint: 'e.g. Replace the cracked mug',
@@ -177,52 +182,54 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
                   return null;
                 },
               ),
-              const SizedBox(height: 16),
-              Text('Where in the room?', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
-              const SizedBox(height: 8),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 3.0,
-                children: QuestCategory.values.map((cat) {
-                  final selected = cat == _category;
-                  return GestureDetector(
-                    onTap: () => setState(() => _category = cat),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        gradient: selected ? LinearGradient(colors: [cat.color1, cat.color2]) : null,
-                        color: selected ? null : AppColors.bgDeep,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: selected ? Colors.transparent : Colors.white.withOpacity(.06),
-                          width: 2,
-                        ),
-                        boxShadow: selected
-                            ? [BoxShadow(color: cat.color2.withOpacity(.3), offset: const Offset(0, 3))]
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          Text(cat.glyph, style: const TextStyle(fontSize: 20)),
-                          const SizedBox(width: 8),
-                          Text(
-                            cat.label.split(' ').last,
-                            style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+              if (!hideCategoryPicker) ...[
+                const SizedBox(height: 12),
+                Text('Where in the room?', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
+                const SizedBox(height: 6),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 3.4,
+                  children: QuestCategory.values.map((cat) {
+                    final selected = cat == _category;
+                    return GestureDetector(
+                      onTap: () => setState(() => _category = cat),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          gradient: selected ? LinearGradient(colors: [cat.color1, cat.color2]) : null,
+                          color: selected ? null : AppColors.bgDeep,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: selected ? Colors.transparent : Colors.white.withOpacity(.06),
+                            width: 2,
                           ),
-                        ],
+                          boxShadow: selected
+                              ? [BoxShadow(color: cat.color2.withOpacity(.3), offset: const Offset(0, 3))]
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            Text(cat.glyph, style: const TextStyle(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Text(
+                              cat.label.split(' ').last,
+                              style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
+                    );
+                  }).toList(),
+                ),
+              ],
+              const SizedBox(height: 12),
               Text('How hard?', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.muted)),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Row(
                 children: _tiers.map((tier) {
                   final selected = tier.xp == _xpTier;
@@ -233,7 +240,7 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         margin: EdgeInsets.only(right: isLast ? 0 : 8),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         decoration: BoxDecoration(
                           color: selected ? tier.color : AppColors.bgDeep,
                           borderRadius: BorderRadius.circular(12),
@@ -263,7 +270,7 @@ class _AddQuestSheetState extends ConsumerState<_AddQuestSheet> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
               PuffyButton(
                 label: _isSubmitting
                     ? (widget.editIndex != null ? 'Saving…' : 'Adding…')

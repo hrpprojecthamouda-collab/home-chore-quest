@@ -5,8 +5,10 @@ import '../providers/game_providers.dart';
 import '../providers/inventory_providers.dart';
 import '../services/sound_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/pip_mascot.dart';
+import '../widgets/bathroom_scene.dart';
+import '../widgets/bedroom_scene.dart';
 import '../widgets/flat_room_scene.dart';
+import '../widgets/pip_mascot.dart';
 import '../models/furniture_skin.dart';
 import '../providers/furniture_providers.dart';
 
@@ -417,6 +419,30 @@ class _PipDressupState extends ConsumerState<_PipDressup> {
 }
 
 // ── ROOM DECORATOR ────────────────────────────────────────────
+enum _PreviewRoom { living, bedroom, bathroom }
+
+_PreviewRoom _roomForFurniture(FurnitureType t) => switch (t) {
+      FurnitureType.vacuum     => _PreviewRoom.living,
+      FurnitureType.fridge     => _PreviewRoom.living,
+      FurnitureType.bed        => _PreviewRoom.bedroom,
+      FurnitureType.desk       => _PreviewRoom.bedroom,
+      FurnitureType.wardrobe   => _PreviewRoom.bedroom,
+      FurnitureType.washer     => _PreviewRoom.bathroom,
+      FurnitureType.toilet     => _PreviewRoom.bathroom,
+      FurnitureType.mirrorSink => _PreviewRoom.bathroom,
+    };
+
+String _furnitureLabel(FurnitureType t) => switch (t) {
+      FurnitureType.vacuum     => '🫧 Vacuum',
+      FurnitureType.fridge     => '🧊 Fridge',
+      FurnitureType.washer     => '🌀 Washer',
+      FurnitureType.bed        => '🛏️ Bed',
+      FurnitureType.desk       => '🪵 Desk',
+      FurnitureType.wardrobe   => '🚪 Wardrobe',
+      FurnitureType.toilet     => '🚽 Toilet',
+      FurnitureType.mirrorSink => '🪞 Mirror',
+    };
+
 class _RoomDecorator extends ConsumerStatefulWidget {
   const _RoomDecorator();
 
@@ -448,13 +474,17 @@ class _RoomDecoratorState extends ConsumerState<_RoomDecorator> {
     final cw    = MediaQuery.of(context).size.width - 24;
     final roomH = cw * kRoomCanvasH / kRoomCanvasW;
 
+    // Which room the selected furniture lives in — drives the preview scene.
+    final previewRoom = _roomForFurniture(_selectedFurnitureType);
+
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // Room canvas preview
+                // Room canvas preview — auto-switches between living / bedroom / bathroom
+                // based on which furniture type is currently selected.
                 Container(
                   margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
                   height: roomH,
@@ -467,7 +497,11 @@ class _RoomDecoratorState extends ConsumerState<_RoomDecorator> {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: FlatRoomScene(messy: false, skinOverrides: previewSkins, showPip: false, showBadges: false),
+                        child: switch (previewRoom) {
+                          _PreviewRoom.living   => FlatRoomScene(messy: false, skinOverrides: previewSkins, showPip: false, showBadges: false),
+                          _PreviewRoom.bedroom  => BedroomScene(messy: false, skinOverrides: previewSkins, showPip: false),
+                          _PreviewRoom.bathroom => BathroomScene(messy: false, skinOverrides: previewSkins, showPip: false),
+                        },
                       ),
                       Positioned(
                         top: 8, left: 8,
@@ -478,7 +512,11 @@ class _RoomDecoratorState extends ConsumerState<_RoomDecorator> {
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            'FURNITURE SKINS',
+                            switch (previewRoom) {
+                              _PreviewRoom.living   => '🛋️ LIVING ROOM',
+                              _PreviewRoom.bedroom  => '🛏️ BEDROOM',
+                              _PreviewRoom.bathroom => '🛁 BATHROOM',
+                            },
                             style: GoogleFonts.nunito(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.yellow, letterSpacing: 0.5),
                           ),
                         ),
@@ -487,37 +525,31 @@ class _RoomDecoratorState extends ConsumerState<_RoomDecorator> {
                   ),
                 ),
 
-                // Furniture type chips
+                // Furniture type chips — wrapped so all 8 types fit in two rows.
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                  child: Row(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: FurnitureType.values.map((t) {
                       final isActive = _selectedFurnitureType == t;
-                      final label = switch (t) {
-                        FurnitureType.vacuum => '🫧 Vacuum',
-                        FurnitureType.fridge => '🧊 Fridge',
-                        FurnitureType.washer => '🫧 Washer',
-                      };
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            ref.read(soundServiceProvider).playSound(SoundType.itemSwitchTick);
-                            setState(() => _selectedFurnitureType = t);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isActive ? AppColors.violet.withValues(alpha: .25) : AppColors.surface,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: isActive ? AppColors.violet : AppColors.border, width: isActive ? 2 : 1),
-                            ),
-                            child: Text(
-                              label,
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w900, color: isActive ? Colors.white : AppColors.muted),
-                            ),
+                      final label = _furnitureLabel(t);
+                      return GestureDetector(
+                        onTap: () {
+                          ref.read(soundServiceProvider).playSound(SoundType.itemSwitchTick);
+                          setState(() => _selectedFurnitureType = t);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isActive ? AppColors.violet.withValues(alpha: .25) : AppColors.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: isActive ? AppColors.violet : AppColors.border, width: isActive ? 2 : 1),
+                          ),
+                          child: Text(
+                            label,
+                            style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w900, color: isActive ? Colors.white : AppColors.muted),
                           ),
                         ),
                       );

@@ -70,9 +70,9 @@ class _RoomSceneState extends ConsumerState<RoomScene> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final badgeCounts = {
-      QuestCategory.cleaning:  ref.watch(pendingQuestsByCategory(QuestCategory.cleaning)).length,
-      QuestCategory.groceries: ref.watch(pendingQuestsByCategory(QuestCategory.groceries)).length,
-      QuestCategory.bills:     ref.watch(pendingQuestsByCategory(QuestCategory.bills)).length,
+      QuestCategory.livingAreas:  ref.watch(pendingQuestsByCategory(QuestCategory.livingAreas)).length,
+      QuestCategory.kitchen: ref.watch(pendingQuestsByCategory(QuestCategory.kitchen)).length,
+      QuestCategory.admin:     ref.watch(pendingQuestsByCategory(QuestCategory.admin)).length,
       QuestCategory.laundry:   ref.watch(pendingQuestsByCategory(QuestCategory.laundry)).length,
     };
 
@@ -96,11 +96,11 @@ class _RoomSceneState extends ConsumerState<RoomScene> with TickerProviderStateM
         if (_workshopRect.contains(pt)) {
           widget.onCategoryTap!(QuestCategory.laundry, toScreen(_workshopRect));
         } else if (_sinkRect.contains(pt)) {
-          widget.onCategoryTap!(QuestCategory.cleaning, toScreen(_sinkRect));
+          widget.onCategoryTap!(QuestCategory.livingAreas, toScreen(_sinkRect));
         } else if (_fridgeRect.contains(pt)) {
-          widget.onCategoryTap!(QuestCategory.groceries, toScreen(_fridgeRect));
+          widget.onCategoryTap!(QuestCategory.kitchen, toScreen(_fridgeRect));
         } else if (_deskRect.contains(pt)) {
-          widget.onCategoryTap!(QuestCategory.bills, toScreen(_deskRect));
+          widget.onCategoryTap!(QuestCategory.admin, toScreen(_deskRect));
         }
       },
       child: AnimatedBuilder(
@@ -596,9 +596,9 @@ class _RoomPainter extends CustomPainter {
     // Absolute SVG coordinates (400×250 space). (x,y) = badge center.
     final entries = <(QuestCategory, double, double)>[
       (QuestCategory.laundry,   57.0, 108.0),  // above laundry zone
-      (QuestCategory.cleaning, 130.0, 112.0),  // above sink faucet
-      (QuestCategory.groceries,199.0,  90.0),  // above fridge top
-      (QuestCategory.bills,    270.0, 108.0),  // above desk lamp
+      (QuestCategory.livingAreas, 130.0, 112.0),  // above sink faucet
+      (QuestCategory.kitchen,199.0,  90.0),  // above fridge top
+      (QuestCategory.admin,    270.0, 108.0),  // above desk lamp
     ];
     for (final (cat, x, y) in entries) {
       final count = badgeCounts[cat] ?? 0;

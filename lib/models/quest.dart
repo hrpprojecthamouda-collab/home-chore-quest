@@ -1,10 +1,23 @@
 import 'dart:math' as math;
 
 enum QuestCategory {
-  cleaning('🧹 Cleaning', 'Housekeeping & tidying'),
-  groceries('🛒 Groceries', 'Shopping & food'),
-  bills('📋 Bills', 'Payments & expenses'),
-  laundry('👕 Laundry', 'Washing & clothes');
+  // Living-area cleaning — broom, vacuum, dust, sweep. Renamed from
+  // `cleaning` to disambiguate from bathroom cleaning. Old persisted data
+  // with category "cleaning" is migrated in Quest.fromJson below.
+  livingAreas('🧹 Living Areas', 'Broom, vacuum, dust & sweep'),
+  // Renamed from `groceries` — covers fridge + sink + dishes + cooking +
+  // meal planning. Lives in the living room. Old persisted data with
+  // category "groceries" is migrated below.
+  kitchen('🍳 Kitchen', 'Cooking, dishes & food'),
+  // Renamed from `bills` — covers paying bills, sorting paperwork,
+  // scheduling appointments, budgeting. Lives in the bedroom (desk).
+  // Old persisted data still uses the literal name "bills"; migrated below.
+  admin('📋 Admin', 'Bills, paperwork & appointments'),
+  laundry('👕 Laundry', 'Washing & clothes'),
+  // Bathroom-specific cleaning — toilet, sink, tub, towels, toiletries.
+  bathroom('🛁 Bathroom', 'Toilet, sink & tub'),
+  // Bedroom — making the bed, sheets, wardrobe.
+  bedroom('🛏️ Bedroom', 'Bed & wardrobe');
 
   final String label;
   final String description;
@@ -71,6 +84,18 @@ class Quest {
 
   factory Quest.fromJson(Map<String, dynamic> json) {
     final savedId = json['id'] as String? ?? '';
+    // Migrate old enum names so existing user data doesn't fall back to
+    // the orElse arm:
+    //   "bills"     → "admin"
+    //   "groceries" → "kitchen"
+    //   "cleaning"  → "livingAreas"
+    final rawCategory = json['category'] as String?;
+    final categoryName = switch (rawCategory) {
+      'bills' => 'admin',
+      'groceries' => 'kitchen',
+      'cleaning' => 'livingAreas',
+      _ => rawCategory,
+    };
     return Quest(
       id: savedId.isNotEmpty ? savedId : Quest.newId(),
       name: json['name'] as String? ?? 'Unknown',
@@ -78,8 +103,8 @@ class Quest {
       isCompleted: json['isCompleted'] as bool? ?? false,
       isOngoing: json['isOngoing'] as bool? ?? false,
       category: QuestCategory.values.firstWhere(
-        (e) => e.name == json['category'],
-        orElse: () => QuestCategory.cleaning,
+        (e) => e.name == categoryName,
+        orElse: () => QuestCategory.livingAreas,
       ),
     );
   }

@@ -55,18 +55,47 @@ enum SoundType {
   addQuest,
   ongoingQuest,    // played when "DO IT" is tapped
   awesome,         // played on "Awesome!" / streak confirmation
-  // Menu-open category sounds — all trigger ducking from the caller
+  // Menu-open category sounds — all trigger ducking from the caller.
+  // The first block is the legacy set (still used by laundry and bathroom +
+  // admin via menuBills); the second block is the new evocative-sound set
+  // introduced when the category model expanded to bedroom / livingAreas /
+  // kitchen / chilling.
   menuCleaning,
   menuGroceries,
   menuBills,
   menuLaundry,
+  // New per-category SFX. Each plays a short atmospheric clue when the
+  // category opens — bed-making rustle, broom sweep, sizzling pan, TV click.
+  menuBedroom,
+  menuLivingAreas,
+  menuKitchen,
+  menuChilling,
   sonicLogo,
+  // Reward sounds — play on a separate channel so they can layer.
+  xpGainShort,   // legacy alias for xpSweep600
+  xpGainLong,    // legacy alias for xpSweep1500
+  // Stepped XP-gain sweeps (warm magical family). Pick the closest match to
+  // the bar fill duration so the audio rise feels proportional to the gain.
+  xpSweep300,
+  xpSweep600,
+  xpSweep1000,
+  xpSweep1500,
+  xpSweep2000,
+  glowCue,       // attention-grab chime before bar/coin animation
+  coinTick,      // per-tick during coin count-up
+  coinFinale,    // landing chime when count-up finishes
 }
 
 enum MusicTrack { lobby }
 
 class SoundService with WidgetsBindingObserver {
   final AudioPlayer _sfx  = AudioPlayer();
+  // Secondary SFX channel — for the XP gain sweep that needs to overlap
+  // with primary SFX. Long sound, never interrupted by other secondary plays.
+  final AudioPlayer _sfx2 = AudioPlayer();
+  // Tertiary channel — for rapid-fire coin ticks. Kept separate from _sfx2
+  // so coin ticks never interrupt the long XP sweep.
+  final AudioPlayer _sfx3 = AudioPlayer();
   final AudioPlayer _bg   = AudioPlayer();
   final AudioPlayer _logo = AudioPlayer();
 
@@ -77,6 +106,10 @@ class SoundService with WidgetsBindingObserver {
   static final double _lvlButton    = _db(-15);
   static final double _lvlConfirm   = _db(-12);
   static final double _lvlLevelUp   = _db(-6);
+  static final double _lvlXpGain    = _db(-9);
+  static final double _lvlCoinTick  = _db(-18);
+  static final double _lvlGlowCue   = _db(-15);
+  static final double _lvlCoinFinale = _db(-9);
   static final double _lvlMenuOpen    = _db(-12);
   static final double _lvlMenuOpenLow = _db(-18); // half amplitude of _lvlMenuOpen
   static final double _lvlMusicFull = _db(-6);  // ~50% — audible base level
@@ -92,7 +125,7 @@ class SoundService with WidgetsBindingObserver {
 
   SoundService([AudioSettings? initialSettings]) {
     if (initialSettings != null) _settings = initialSettings;
-    _sfx.setAudioContext(AudioContext(
+    final ctx = AudioContext(
       android: const AudioContextAndroid(
         isSpeakerphoneOn: false,
         stayAwake: false,
@@ -100,7 +133,10 @@ class SoundService with WidgetsBindingObserver {
         usageType: AndroidUsageType.game,
         audioFocus: AndroidAudioFocus.none,
       ),
-    ));
+    );
+    _sfx.setAudioContext(ctx);
+    _sfx2.setAudioContext(ctx);
+    _sfx3.setAudioContext(ctx);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -235,6 +271,21 @@ class SoundService with WidgetsBindingObserver {
     SoundType.itemSwitchTick,
   };
 
+  // Sounds that should play on the secondary channel so they layer with
+  // primary SFX (e.g. XP fill + coin ticks playing during reward animation).
+  static const _kSecondaryChannel = {
+    SoundType.xpGainShort,
+    SoundType.xpGainLong,
+    SoundType.xpSweep300,
+    SoundType.xpSweep600,
+    SoundType.xpSweep1000,
+    SoundType.xpSweep1500,
+    SoundType.xpSweep2000,
+    SoundType.glowCue,
+    SoundType.coinTick,
+    SoundType.coinFinale,
+  };
+
   Future<void> playSound(SoundType type) async {
     if (_settings.sfxMuted) return;
 
@@ -256,6 +307,24 @@ class SoundService with WidgetsBindingObserver {
     }
 
     final vol = (_settings.sfxVolume * lvl).clamp(0.0, 1.0);
+
+    // Coin ticks fire rapidly during count-up; route them to a dedicated
+    // player so they never interrupt the long XP sweep on _sfx2. The coin
+    // finale rides the same channel since it lands at the end of ticking.
+    if (t == SoundType.coinTick || t == SoundType.coinFinale) {
+      await _sfx3.setVolume(vol);
+      await _sfx3.play(AssetSource('audio/$file'));
+      return;
+    }
+
+    // Route to secondary channel for the XP gain sweep so it overlaps
+    // with primary SFX (no stop() — lets it play to completion).
+    if (_kSecondaryChannel.contains(t)) {
+      await _sfx2.setVolume(vol);
+      await _sfx2.play(AssetSource('audio/$file'));
+      return;
+    }
+
     await _sfx.stop();
     await _sfx.setVolume(vol);
     await _sfx.play(AssetSource('audio/$file'));
@@ -284,7 +353,24 @@ class SoundService with WidgetsBindingObserver {
     SoundType.menuGroceries      => ('menu_open_groceries.wav',    _lvlMenuOpen),
     SoundType.menuBills          => ('menu_open_bills.wav',        _lvlMenuOpenLow),
     SoundType.menuLaundry        => ('laundry_category.wav',       _lvlMenuOpenLow),
+    // New per-category SFX. Drop matching .wav files into assets/audio/.
+    SoundType.menuBedroom        => ('menu_open_bedroom.wav',      _lvlMenuOpenLow),
+    SoundType.menuLivingAreas    => ('menu_open_living_areas.wav', _lvlMenuOpenLow),
+    SoundType.menuKitchen        => ('menu_open_kitchen.wav',      _lvlMenuOpen),
+    SoundType.menuChilling       => ('menu_open_chilling.flac',    _lvlMenuOpenLow),
     SoundType.sonicLogo          => (null,                         _lvlConfirm),
+    // Legacy aliases — keep mapped to closest stepped sweep for back-compat.
+    SoundType.xpGainShort        => ('xp_sweep_600.wav',           _lvlXpGain),
+    SoundType.xpGainLong         => ('xp_sweep_1500.wav',          _lvlXpGain),
+    // Stepped XP sweeps (warm magical family) — choose by fill duration.
+    SoundType.xpSweep300         => ('xp_sweep_300.wav',           _lvlXpGain),
+    SoundType.xpSweep600         => ('xp_sweep_600.wav',           _lvlXpGain),
+    SoundType.xpSweep1000        => ('xp_sweep_1000.wav',          _lvlXpGain),
+    SoundType.xpSweep1500        => ('xp_sweep_1500.wav',          _lvlXpGain),
+    SoundType.xpSweep2000        => ('xp_sweep_2000.wav',          _lvlXpGain),
+    SoundType.glowCue            => ('glow_cue.wav',               _lvlGlowCue),
+    SoundType.coinTick           => ('coin_tick.wav',              _lvlCoinTick),
+    SoundType.coinFinale         => ('coin_finale.wav',            _lvlCoinFinale),
   };
 
   // ─── Internal ────────────────────────────────────────────────
@@ -314,6 +400,8 @@ class SoundService with WidgetsBindingObserver {
     _fadeTimer?.cancel();
     _debounce?.cancel();
     await _sfx.dispose();
+    await _sfx2.dispose();
+    await _sfx3.dispose();
     await _bg.dispose();
     await _logo.dispose();
   }

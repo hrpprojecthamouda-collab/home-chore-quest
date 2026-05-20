@@ -91,15 +91,15 @@ class QuestListNotifier extends Notifier<List<Quest>> {
   static const _cleanRoomQuest = Quest(
     name: '🏠 Deep Clean the Room',
     xpReward: 80,
-    category: QuestCategory.cleaning,
+    category: QuestCategory.livingAreas,
     isCleanRoomQuest: true,
   );
 
   static const _defaultQuests = [
-    Quest(name: 'Clean the Fridge',  xpReward: 50,  category: QuestCategory.cleaning),
-    Quest(name: 'Take out Trash',    xpReward: 20,  category: QuestCategory.cleaning),
-    Quest(name: 'Buy milk & bread',  xpReward: 30,  category: QuestCategory.groceries),
-    Quest(name: 'Pay electric bill', xpReward: 40,  category: QuestCategory.bills),
+    Quest(name: 'Clean the Fridge',  xpReward: 50,  category: QuestCategory.livingAreas),
+    Quest(name: 'Take out Trash',    xpReward: 20,  category: QuestCategory.livingAreas),
+    Quest(name: 'Buy milk & bread',  xpReward: 30,  category: QuestCategory.kitchen),
+    Quest(name: 'Pay electric bill', xpReward: 40,  category: QuestCategory.admin),
     Quest(name: 'Do the laundry',    xpReward: 150, category: QuestCategory.laundry),
   ];
 

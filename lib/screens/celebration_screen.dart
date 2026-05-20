@@ -38,7 +38,7 @@ class CelebrationScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const PipMascot(size: 140, hat: true),
+                    const PipWithItems(size: 140),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 14),

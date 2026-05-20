@@ -34,37 +34,47 @@ abstract class AppTheme {
 
 extension QuestCategoryVisual on QuestCategory {
   String get glyph => switch (this) {
-    QuestCategory.cleaning  => '🧽',
-    QuestCategory.groceries => '🍞',
-    QuestCategory.bills     => '💸',
+    QuestCategory.livingAreas  => '🧽',
+    QuestCategory.kitchen   => '🍳',
+    QuestCategory.admin     => '💸',
     QuestCategory.laundry   => '👕',
+    QuestCategory.bathroom  => '🛁',
+    QuestCategory.bedroom   => '🛏️',
   };
 
   Color get color1 => switch (this) {
-    QuestCategory.cleaning  => AppColors.cyan,
-    QuestCategory.groceries => AppColors.green,
-    QuestCategory.bills     => AppColors.yellow,
+    QuestCategory.livingAreas  => AppColors.cyan,
+    QuestCategory.kitchen   => AppColors.green,
+    QuestCategory.admin     => AppColors.yellow,
     QuestCategory.laundry   => const Color(0xFFD9A8FF),
+    QuestCategory.bathroom  => const Color(0xFF3EDCFF),    // teal — bathroom tiles + water
+    QuestCategory.bedroom   => const Color(0xFFC98AFF),    // soft violet — bed + duvet
   };
 
   Color get color2 => switch (this) {
-    QuestCategory.cleaning  => AppColors.blue,
-    QuestCategory.groceries => const Color(0xFF22C563),
-    QuestCategory.bills     => const Color(0xFFF59E0B),
+    QuestCategory.livingAreas  => AppColors.blue,
+    QuestCategory.kitchen   => const Color(0xFF22C563),
+    QuestCategory.admin     => const Color(0xFFF59E0B),
     QuestCategory.laundry   => const Color(0xFF9D5CFF),
+    QuestCategory.bathroom  => const Color(0xFF2A80A8),    // deeper teal
+    QuestCategory.bedroom   => const Color(0xFF7A4FBF),    // deeper violet
   };
 
   String get roomLabel => switch (this) {
-    QuestCategory.cleaning  => 'THE SINK',
-    QuestCategory.groceries => 'THE FRIDGE',
-    QuestCategory.bills     => 'THE DESK',
+    QuestCategory.livingAreas  => 'THE BROOM',
+    QuestCategory.kitchen   => 'THE KITCHEN',
+    QuestCategory.admin     => 'THE DESK',
     QuestCategory.laundry   => 'THE LAUNDRY',
+    QuestCategory.bathroom  => 'THE BATHROOM',
+    QuestCategory.bedroom   => 'THE BEDROOM',
   };
 
   Color get darkBg => switch (this) {
-    QuestCategory.cleaning  => const Color(0xFF0F7C99),
-    QuestCategory.groceries => const Color(0xFF16894A),
-    QuestCategory.bills     => const Color(0xFFA07000),
+    QuestCategory.livingAreas  => const Color(0xFF0F7C99),
+    QuestCategory.kitchen   => const Color(0xFF16894A),
+    QuestCategory.admin     => const Color(0xFFA07000),
     QuestCategory.laundry   => const Color(0xFF5A2080),
+    QuestCategory.bathroom  => const Color(0xFF1A5670),
+    QuestCategory.bedroom   => const Color(0xFF3A1F66),
   };
 }
