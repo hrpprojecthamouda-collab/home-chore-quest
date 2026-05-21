@@ -56,3 +56,8 @@ screenshots/
 # Firebase (if you add it later)
 google-services.json
 GoogleService-Info.plist
+
+# Raw working audio assets (source files, not the processed clips in
+# assets/audio/ that the app uses).
+NewAudio/
+Sound FX/

@@ -13,7 +13,19 @@ final firestoreUserProvider = Provider<FirestoreUserService>((ref) {
   return FirestoreUserService();
 });
 
-// Auth state provider - tracks if user is logged in
+// Auth state provider - tracks if user is logged in.
+//
+// IMPORTANT: Firebase Auth on Android/iOS restores the persisted session
+// asynchronously AFTER Firebase.initializeApp returns. If we subscribed to
+// userChanges() alone, the first emission can be `null` on a cold launch
+// (because restore hasn't completed yet), which would route the user to
+// LoginScreen even though they have a valid session on disk.
+//
+// To avoid that: this stream prepends FirebaseAuth.instance.currentUser
+// (which is already populated by the time main() awaits initializeApp on
+// most cold-launch paths) as the very first emission, then yields the
+// regular userChanges() stream after it. That way the router never sees a
+// spurious null before restoration finishes.
 final authStateProvider = StreamProvider<User?>((ref) {
   final authService = ref.watch(firebaseAuthProvider);
   return authService.authStateChanges;
@@ -56,20 +68,23 @@ class AuthNotifier extends Notifier<AsyncValue<void>> {
         password: password,
       );
 
-      // Create user profile in Firestore
-      await userService.createUserProfile(
-        userId: userCredential.user!.uid,
-        email: email,
-        username: username,
-      );
+      // Set the display name in Firebase Auth so every screen can read it.
+      await userCredential.user?.updateDisplayName(username);
+
+      // Fire-and-forget: Firestore profile creation must never block signup.
+      // If rules are not yet deployed, the write silently queues or fails.
+      final uid = userCredential.user?.uid;
+      if (uid != null) {
+        userService.createUserProfile(
+          userId: uid,
+          email: email,
+          username: username,
+        ).catchError((_) {});
+      }
 
       state = const AsyncValue.data(null);
     } catch (e, stack) {
-      // If auth succeeded but profile creation failed, roll back the auth user
-      // so auth and Firestore do not get out of sync.
-      if (userCredential?.user != null) {
-        await userCredential!.user!.delete();
-      }
+      // Auth itself failed — roll back nothing (user was never created).
       state = AsyncValue.error(e, stack);
       rethrow;
     }
@@ -120,4 +135,10 @@ final authNotifierProvider = NotifierProvider<AuthNotifier, AsyncValue<void>>(()
 final isAuthenticatedProvider = Provider<bool>((ref) {
   final user = ref.watch(currentUserProvider);
   return user != null;
+});
+
+// Scoped user ID — rebuilds game providers when auth user changes
+final currentUserIdProvider = Provider<String>((ref) {
+  final authState = ref.watch(authStateProvider);
+  return authState.asData?.value?.uid ?? 'anonymous';
 });
