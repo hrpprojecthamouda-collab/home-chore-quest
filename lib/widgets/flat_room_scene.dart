@@ -21,9 +21,9 @@ const _kCropTop    = 0.0;
 // so the fridge sits on the left and the cleaning station on the right.
 // Kitchen (formerly groceries) now covers fridge + sink/counter/dishes
 // together — back-left + a slice of back-right. Living-areas cleaning
-// (broom/vacuum/bucket) moved to the front-left where the desk used to be.
+// (broom/vacuum/bucket) sits on the front-right of the floor.
 const _kitchenRect      = Rect.fromLTWH(20,  150, 220, 290);
-const _livingAreasRect  = Rect.fromLTWH(20,  415, 215, 185);
+const _livingAreasRect  = Rect.fromLTWH(195, 415, 195, 185);
 // Laundry moved to the bathroom scene; no hit-box here anymore.
 // Quest board on the upper-LEFT wall — opens AllQuestsScreen on tap.
 // Sits over the fridge (now on the left) so it stays visually anchored to it
@@ -70,7 +70,7 @@ class FlatRoomScene extends ConsumerStatefulWidget {
 // Shifted +70 to follow the new floor seam at y:418.
 const _kPipSize = 52.0;
 const _kPipPositions = {
-  QuestCategory.livingAreas:  Offset(120.0, 540.0),  // in front of vacuum/bucket (front-left)
+  QuestCategory.livingAreas:  Offset(280.0, 540.0),  // in front of vacuum/bucket (front-right)
   QuestCategory.kitchen:   Offset(150.0, 380.0),  // between fridge and sink (back-left)
   // Admin moved to the bedroom scene; bathroom/bedroom/laundry Pips live in
   // their own scenes.
@@ -866,14 +866,14 @@ class _FlatRoomPainter extends CustomPainter {
     canvas.restore();
   }
 
-  // ── FRONT-LEFT: CLEANING (vacuum + bucket only) ─────────────
+  // ── FRONT-RIGHT: CLEANING (vacuum + bucket only) ────────────
   // The sink+counter+dishes moved into _drawKitchen because they're
   // really kitchen chores (dishes / wipe counters / faucet drip).
   // What remains here is the living-area cleaning tools: the broom +
   // upright vacuum + a small sudsy bucket beside it.
   void _drawCleaning(Canvas canvas) {
     canvas.save();
-    canvas.translate(30, 380);
+    canvas.translate(210, 380);
 
     if ((badgeCounts[QuestCategory.livingAreas] ?? 0) > 0)
       _drawTapCue(canvas, 40, 130, 80, _teal);
@@ -1186,7 +1186,7 @@ class _FlatRoomPainter extends CustomPainter {
   // ── Quest badges ─────────────────────────────────────────────
   void _drawQuestBadges(Canvas canvas) {
     final entries = <(QuestCategory, double, double)>[
-      (QuestCategory.livingAreas, 70.0,  420.0),   // above the vacuum (front-left)
+      (QuestCategory.livingAreas, 250.0, 420.0),   // above the vacuum (front-right)
       (QuestCategory.kitchen,  30.0,  250.0),   // above the fridge XP sticker (back-left)
       // Admin / bathroom / bedroom / laundry badges live in their own scenes.
     ];

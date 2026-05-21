@@ -93,8 +93,10 @@ class _RewardCoinChipState extends State<RewardCoinChip>
     _attach();
   }
 
+  Object? _attachToken;
+
   void _attach() {
-    widget.controller.attach(
+    _attachToken = widget.controller.attach(
       highlight: () {
         // Glow halo on the chip + small punch on the counter.
         _glowCtrl.forward(from: 0).then((_) => _glowCtrl.reverse());
@@ -109,14 +111,14 @@ class _RewardCoinChipState extends State<RewardCoinChip>
   void didUpdateWidget(covariant RewardCoinChip old) {
     super.didUpdateWidget(old);
     if (widget.controller != old.controller) {
-      old.controller.detach();
+      if (_attachToken != null) old.controller.detach(_attachToken!);
       _attach();
     }
   }
 
   @override
   void dispose() {
-    widget.controller.detach();
+    if (_attachToken != null) widget.controller.detach(_attachToken!);
     _glowCtrl.dispose();
     super.dispose();
   }

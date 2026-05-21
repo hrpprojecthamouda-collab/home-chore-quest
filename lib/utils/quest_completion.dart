@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../animation/reward_choreographer.dart';
+import '../data/clean_home_facts.dart';
 import '../data/quest_catalog.dart';
 import '../models/quest.dart';
 import '../providers/game_providers.dart';
 import '../providers/inventory_providers.dart';
 import '../screens/celebration_screen.dart';
+
+/// Serialization lock — only one quest completion runs end-to-end at a
+/// time. Without this, tapping DONE on a second quest while the first is
+/// still animating would let both calls snapshot the same stale
+/// xpProvider value, both compute the same `levelUp` transition, and
+/// both push the celebration screen even though only one actual
+/// level-up happened.
+Future<void> _completionLock = Future.value();
 
 /// Shared quest-completion flow.
 ///
@@ -16,6 +25,32 @@ import '../screens/celebration_screen.dart';
 ///    because they were already at the right display values).
 /// 5. Pushes [CelebrationScreen] if a level-up occurred.
 Future<void> runQuestCompletion({
+  required WidgetRef ref,
+  required RewardChoreographer choreographer,
+  required BuildContext context,
+  required int index,
+  required Quest quest,
+}) {
+  // Chain this completion onto any in-flight one. A second tap during
+  // an active animation now waits for the previous call to finish
+  // (including its XP write) before snapshotting state. Errors in
+  // earlier completions are swallowed here so they don't break the
+  // chain for subsequent quests.
+  // ignore: use_build_context_synchronously
+  final next = _completionLock.catchError((_) {}).then((_) =>
+      _runQuestCompletionInner(
+        ref: ref,
+        choreographer: choreographer,
+        // ignore: use_build_context_synchronously
+        context: context,
+        index: index,
+        quest: quest,
+      ));
+  _completionLock = next;
+  return next;
+}
+
+Future<void> _runQuestCompletionInner({
   required WidgetRef ref,
   required RewardChoreographer choreographer,
   required BuildContext context,
@@ -47,6 +82,17 @@ Future<void> runQuestCompletion({
       xpDelta: delta,
       coinsOnQuest: coinsOnQuest,
       coinsOnLevelUp: coinsOnLevelUp,
+      // Fires the instant the XP bar reaches 100 %, alongside the
+      // level-up sound — celebration arrives with the cue, not after the
+      // whole sequence has unwound.
+      onLevelUpCue: levelUp
+          ? () {
+              if (!context.mounted) return;
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => CelebrationScreen(level: newLvl),
+              ));
+            }
+          : null,
     );
   } catch (_) {
     // Even if the choreography hits an error mid-sequence, ensure XP/coin
@@ -60,9 +106,20 @@ Future<void> runQuestCompletion({
   ref.read(xpProvider.notifier).addXp(delta);
   ref.read(coinProvider.notifier).addCoins(coinsOnQuest + coinsOnLevelUp);
 
-  if (levelUp && context.mounted) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CelebrationScreen(level: newLvl),
-    ));
+  // ── Pip clean-home fact trigger ────────────────────────────────────────
+  // Pip speaks every Nth completed quest (cumulative across all sessions),
+  // no other gating. If the bubble lands on the same completion as a
+  // level-up, the celebration screen plays first and the bubble appears
+  // when the player returns to home — natural sequencing, no skip needed.
+  ref.read(completedQuestCountProvider.notifier).increment();
+  final completed = ref.read(completedQuestCountProvider);
+  if (completed % kPipFactEveryNQuests == 0) {
+    final idx = ref.read(factIndexProvider);
+    final fact = kCleanHomeFacts[idx % kCleanHomeFacts.length].text;
+    ref.read(factIndexProvider.notifier).advance();
+    ref.read(pendingPipSpeechProvider.notifier).show(fact);
   }
 }
+
+/// Pip surfaces a clean-home fact every Nth completed quest.
+const int kPipFactEveryNQuests = 3;

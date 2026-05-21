@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../providers/game_providers.dart';
 import '../services/sound_service.dart';
 import 'reward_controllers.dart';
@@ -33,12 +35,18 @@ class RewardChoreographer {
   /// Inputs are pre-computed by the caller from the quest + provider state
   /// at completion time. The choreographer does NOT mutate providers; it
   /// drives the controllers and plays sounds.
+  ///
+  /// [onLevelUpCue] is invoked the instant the XP bar reaches 100 %, in
+  /// sync with the level-up sound. The caller uses it to push the
+  /// CelebrationScreen so the animation appears with the sound cue rather
+  /// than after the whole sequence finishes.
   Future<void> playSequence({
     required int xpBefore,
     required int prevCoins,
     required int xpDelta,
     required int coinsOnQuest,
     required int coinsOnLevelUp,
+    VoidCallback? onLevelUpCue,
   }) async {
     // Activate controllers so their auto-react paths snap silently when the
     // caller writes to providers afterwards.
@@ -54,6 +62,7 @@ class RewardChoreographer {
       final levelUp = xpDelta >= xpToLvlEnd;
       final newLvl = levelFromXp(xpBefore + xpDelta);
       final newLvlMax = xpForLevel(newLvl);
+      final totalCoins = coinsOnQuest + coinsOnLevelUp;
 
       // 1. DONE feedback: quest complete sfx + Pip happiness reaction.
       sound.playSound(SoundType.questComplete);
@@ -63,78 +72,60 @@ class RewardChoreographer {
       await _wait(200);
       if (_cancelled) return;
 
-      // 2. Coins gained on the quest itself (clean room): glow → tick-up.
-      if (coinsOnQuest > 0) {
-        coin.highlight();
-        sound.playSound(SoundType.glowCue);
-        await _wait(400);
-        if (_cancelled) return;
-        await coin.countTo(prevCoins + coinsOnQuest);
-        if (_cancelled) return;
-        sound.playSound(SoundType.coinFinale);
-      }
-
-      // 3. Brief pause before the XP step.
-      await _wait(250);
-      if (_cancelled) return;
-
-      // 4. XP bar highlight glow.
+      // 2. XP bar highlight glow — leads straight into the fill.
       xp.highlight();
       sound.playSound(SoundType.glowCue);
-      await _wait(400);
+      await _wait(200);
       if (_cancelled) return;
 
-      // 5. XP fill segment 1: full delta if no level-up, else fill to 100%.
+      // 3. XP fill segment 1: full delta if no level-up, else fill to 100 %.
+      //    Visual only — no sweep sound (the bar's visual fill carries it).
       final firstXp = levelUp ? xpToLvlEnd : xpDelta;
       final firstDur = _durFor(firstXp);
       final firstTargetPct = levelUp
           ? 1.0
           : ((xpInPrevLvl + xpDelta) / prevLvlMax).clamp(0.0, 1.0);
-      // Fire sweep sound and bar fill simultaneously — playSound is async
-      // internally so calling it before fillTo would delay it by one frame.
-      sound.playSound(_sweepFor(firstDur));
       await xp.fillTo(
         firstTargetPct,
         duration: Duration(milliseconds: firstDur),
       );
       if (_cancelled) return;
 
-      // No level-up → done.
-      if (!levelUp) return;
-
-      // 6. Brief pause.
-      await _wait(250);
-      if (_cancelled) return;
-
-      // 7. Snap bar to 0% of the new level silently.
-      xp.snapTo(0.0, newMax: newLvlMax);
-
-      // 8. Coins gained from leveling up: glow → tick-up.
-      if (coinsOnLevelUp > 0) {
-        coin.highlight();
-        sound.playSound(SoundType.glowCue);
-        await _wait(400);
+      // 4. Level-up branch — segment 1 just landed on 100 %. Fire the
+      //    level-up sound AND the caller's CelebrationScreen push at the
+      //    same instant so the animation arrives with the audio cue.
+      //    Then snap the bar to 0 % of the new level and continue.
+      if (levelUp) {
+        sound.playSound(SoundType.levelUp);
+        onLevelUpCue?.call();
+        await _wait(350);
         if (_cancelled) return;
-        await coin.countTo(prevCoins + coinsOnQuest + coinsOnLevelUp);
-        if (_cancelled) return;
-        sound.playSound(SoundType.coinFinale);
+        xp.snapTo(0.0, newMax: newLvlMax);
+
+        final restXp = xpDelta - xpToLvlEnd;
+        if (restXp > 0) {
+          final restDur = _durFor(restXp);
+          final restPct = (restXp / newLvlMax).clamp(0.0, 1.0);
+          await xp.fillTo(restPct, duration: Duration(milliseconds: restDur));
+          if (_cancelled) return;
+        }
+      }
+
+      // 5. Coins are the FINAL beat — single combined tick-up that includes
+      //    both the quest coins and (if there was a level-up) the level-up
+      //    bonus. Glow halo and tick-up start at the same moment — the
+      //    glow plays as a visual cue underneath the running count, and the
+      //    per-tick coin sounds are scheduled across the same duration as
+      //    the number animation (see AnimatedCoinCounter._animateTo), so
+      //    audio and visual ticks line up. No closing chime — the last
+      //    per-tick coin sound is the natural ending.
+      if (totalCoins > 0) {
         await _wait(250);
         if (_cancelled) return;
-      }
-
-      // 9. XP fill segment 2: remaining XP into the new level.
-      final restXp = xpDelta - xpToLvlEnd;
-      if (restXp > 0) {
-        final restDur = _durFor(restXp);
-        sound.playSound(_sweepFor(restDur));
-        final restPct = (restXp / newLvlMax).clamp(0.0, 1.0);
-        await xp.fillTo(restPct, duration: Duration(milliseconds: restDur));
+        coin.highlight();
+        await coin.countTo(prevCoins + totalCoins);
         if (_cancelled) return;
       }
-
-      // 10. Level-up sound fires here — right before returning — so the caller
-      //     pushes CelebrationScreen in sync with the sound cue.
-      sound.playSound(SoundType.levelUp);
     } finally {
       coin.active = false;
       xp.active = false;
@@ -146,15 +137,4 @@ class RewardChoreographer {
   }
 
   int _durFor(int xp) => (400 + xp * 8).clamp(600, 2000);
-
-  /// Picks the stepped XP sweep that best matches a fill duration. Each
-  /// sweep rises continuously over its baked length, so matching length
-  /// keeps the audio rise synced with the bar.
-  SoundType _sweepFor(int durMs) {
-    if (durMs <= 450)  return SoundType.xpSweep300;
-    if (durMs <= 800)  return SoundType.xpSweep600;
-    if (durMs <= 1250) return SoundType.xpSweep1000;
-    if (durMs <= 1750) return SoundType.xpSweep1500;
-    return SoundType.xpSweep2000;
-  }
 }

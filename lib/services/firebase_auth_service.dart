@@ -9,7 +9,36 @@ class FirebaseAuthService {
 
   /// Stream of authentication state changes — uses userChanges() so profile
   /// updates (displayName, photoURL) also trigger downstream rebuilds.
-  Stream<User?> get authStateChanges => _auth.userChanges();
+  ///
+  /// Cold-launch behaviour: Firebase hydrates the persisted user
+  /// asynchronously after Firebase.initializeApp() returns. If a subscriber
+  /// reads userChanges() before hydration finishes, the first event is a
+  /// spurious `null` — which would bounce a returning user back to the
+  /// login screen. To prevent that, we:
+  ///   1. Yield `currentUser` immediately (often already populated).
+  ///   2. If it was null, give the SDK up to 800ms to emit a non-null user
+  ///      via authStateChanges before we proceed.
+  ///   3. Then forward userChanges() normally for the rest of the session.
+  Stream<User?> get authStateChanges async* {
+    final initial = _auth.currentUser;
+    if (initial != null) {
+      yield initial;
+    } else {
+      // Wait briefly for hydration. If we see a user, yield it; otherwise
+      // yield null after the grace window.
+      User? hydrated;
+      try {
+        hydrated = await _auth
+            .authStateChanges()
+            .firstWhere((u) => u != null)
+            .timeout(const Duration(milliseconds: 800));
+      } catch (_) {
+        hydrated = null;
+      }
+      yield hydrated;
+    }
+    yield* _auth.userChanges();
+  }
 
   /// Sign up with email and password
   Future<UserCredential> signUp({

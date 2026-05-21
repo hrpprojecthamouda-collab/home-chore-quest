@@ -22,7 +22,9 @@ import '../animation/reward_controllers.dart';
 import '../models/furniture_skin.dart';
 import '../models/quest.dart';
 import '../providers/furniture_providers.dart';
+import '../providers/game_providers.dart';
 import 'pip_mascot.dart';
+import 'quest_count_badge.dart';
 import 'room_shell_painter.dart';
 
 // Hit targets in design space (400 × 600), per handoff hit-percent table.
@@ -157,6 +159,26 @@ class _BathroomSceneState extends ConsumerState<BathroomScene>
                     controller: widget.pipController,
                   ),
                 ),
+              // Bathroom badge — top-right of the toilet.
+              Positioned(
+                left: 140 * sx,
+                top:  220 * sy,
+                child: QuestCountBadge(
+                  count: ref.watch(
+                    pendingQuestsByCategory(QuestCategory.bathroom),
+                  ).length,
+                ),
+              ),
+              // Laundry badge — top-right of the washer.
+              Positioned(
+                left: 345 * sx,
+                top:  380 * sy,
+                child: QuestCountBadge(
+                  count: ref.watch(
+                    pendingQuestsByCategory(QuestCategory.laundry),
+                  ).length,
+                ),
+              ),
             ],
           );
         },

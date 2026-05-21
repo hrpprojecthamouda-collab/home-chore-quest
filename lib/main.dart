@@ -67,7 +67,7 @@ class _LaunchCinematicGateState extends ConsumerState<LaunchCinematicGate> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 4000), () {
+    Future.delayed(const Duration(milliseconds: 1000), () {
       if (!mounted) return;
       setState(() => _minDone = true);
     });

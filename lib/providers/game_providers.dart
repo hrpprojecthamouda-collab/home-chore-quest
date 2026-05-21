@@ -161,10 +161,12 @@ class QuestListNotifier extends Notifier<List<Quest>> {
   }
 
   void completeQuest(int index) {
-    final updatedQuests = [...state];
-    final currentQuest = updatedQuests[index];
-    updatedQuests[index] = currentQuest.copyWith(isCompleted: true, isOngoing: false);
-    state = updatedQuests;
+    // Quests vanish on completion — no in-list "history" view. (A future
+    // profile screen may surface a long-term history; that will draw from
+    // a separate event log, not from this active-quest list.)
+    final updated = List.of(state);
+    updated.removeAt(index);
+    state = updated;
     _saveQuests();
   }
 
@@ -191,10 +193,6 @@ class QuestListNotifier extends Notifier<List<Quest>> {
     _saveQuests();
   }
 
-  void clearCategoryHistory(QuestCategory category) {
-    state = state.where((q) => !(q.isCompleted && q.category == category)).toList();
-    _saveQuests();
-  }
 }
 
 final questListProvider = NotifierProvider<QuestListNotifier, List<Quest>>(() {
@@ -267,4 +265,73 @@ class LoginStreakNotifier extends Notifier<int> {
 
 final loginStreakProvider = NotifierProvider<LoginStreakNotifier, int>(
   LoginStreakNotifier.new,
+);
+
+// ─── Clean-home facts (Pip speech bubble) ─────────────────────────────────
+//
+// `factIndexProvider` is a rolling pointer into `kCleanHomeFacts` — every
+// time Pip speaks, it advances by 1 (wrapping at the catalog's length).
+// `lastFactLevelProvider` records the player's level the LAST time Pip
+// spoke; the trigger in runQuestCompletion only fires when the current
+// level is different from that record (so Pip speaks once per level
+// transition, plus once for a brand-new account where it's still -1).
+
+class FactIndexNotifier extends Notifier<int> {
+  @override
+  int build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final uid   = ref.watch(currentUserIdProvider);
+    return prefs.getInt('${uid}_factIndex') ?? 0;
+  }
+
+  void advance() {
+    final uid = ref.read(currentUserIdProvider);
+    state = state + 1;
+    ref.read(sharedPreferencesProvider).setInt('${uid}_factIndex', state);
+  }
+}
+
+final factIndexProvider = NotifierProvider<FactIndexNotifier, int>(
+  FactIndexNotifier.new,
+);
+
+/// Cumulative count of quests the user has ever completed. Drives Pip's
+/// fact-dialogue cadence — she speaks every Nth quest (see
+/// `kPipFactEveryNQuests` in runQuestCompletion). Persisted per-user so
+/// the cadence survives app restarts.
+class CompletedQuestCountNotifier extends Notifier<int> {
+  @override
+  int build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final uid   = ref.watch(currentUserIdProvider);
+    return prefs.getInt('${uid}_completedQuestCount') ?? 0;
+  }
+
+  void increment() {
+    final uid = ref.read(currentUserIdProvider);
+    state = state + 1;
+    ref.read(sharedPreferencesProvider)
+        .setInt('${uid}_completedQuestCount', state);
+  }
+}
+
+final completedQuestCountProvider =
+    NotifierProvider<CompletedQuestCountNotifier, int>(
+  CompletedQuestCountNotifier.new,
+);
+
+/// Holds the next fact string Pip should display. The home screen watches
+/// this; setting it to a non-null value makes the speech bubble appear,
+/// setting it back to null tears it down. Transient (not persisted) —
+/// it's purely a UI hand-off from runQuestCompletion to the home stack.
+class PendingPipSpeechNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+  void show(String fact) => state = fact;
+  void clear() => state = null;
+}
+
+final pendingPipSpeechProvider =
+    NotifierProvider<PendingPipSpeechNotifier, String?>(
+  PendingPipSpeechNotifier.new,
 );

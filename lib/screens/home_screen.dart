@@ -13,6 +13,7 @@ import '../widgets/bathroom_scene.dart';
 import '../widgets/bedroom_scene.dart';
 import '../widgets/chilling_sheet.dart';
 import '../widgets/flat_room_scene.dart';
+import '../widgets/pip_speech_bubble.dart';
 import '../animation/reward_choreographer.dart';
 import '../animation/reward_controllers.dart';
 import '../widgets/reward_overlay_header.dart';
@@ -44,6 +45,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // come back. Drives the `active` flag on each room scene so off-screen
   // rooms don't burn the frame budget during transitions.
   bool _homeOnTop = true;
+  // Small Pip mounted above the category modal sheet's drag handle while
+  // the sheet is open. Bound to the same _pipCtrl as the home Pip — fires
+  // her celebration animation right at the rim of the sheet so the player
+  // sees the reaction without taking eyes off the quest list.
+  OverlayEntry? _rewardOverlay;
+  // Pip's speech bubble — also mounted in the root Overlay so it floats
+  // above any modal sheet (otherwise it would be hidden behind the
+  // category sheet's widget tree).
+  OverlayEntry? _speechOverlay;
 
   @override
   void initState() {
@@ -72,6 +82,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _removePipOverlay();
+    _removeSpeechOverlay();
     _pageCtrl.dispose();
     _choreographer.cancel();
     ref.read(soundServiceProvider).stopMusic();
@@ -100,32 +112,95 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // Bathroom keeps the legacy cleaning sound until a dedicated one exists.
       QuestCategory.bathroom    => SoundType.menuCleaning,
     };
-    final sound = ref.read(soundServiceProvider);
-    sound.duck();
-    sound.playSound(soundType);
-    // Pause all room animations the moment we open the sheet so the home
-    // stops painting underneath the slide-up transition.
+    // Mirror the chilling tap exactly: play the menu SFX, no ducking
+    // (the `Timer.periodic` 24-step fade inside duck() was firing
+    // ~10ms platform-channel setVolume calls during the slide-up and
+    // stuttering the UI thread). Chilling never ducked and never
+    // flickered — categories now follow the same pattern.
+    ref.read(soundServiceProvider).playSound(soundType);
     setState(() => _homeOnTop = false);
-    // Matches the chilling sheet's config exactly: no constraints (the sheet
-    // sizes to its content so the slide-up and the visible content move in
-    // lockstep), no useSafeArea, no extra wrappers.
+    _openCategorySheet(cat);
+  }
+
+  // Sheet height as a fraction of screen height — drives both the modal
+  // constraint and the overlay-Pip position. A fixed cap keeps the top
+  // edge deterministic so Pip lands consistently above the rim.
+  static const double _kCategorySheetFraction = 0.7;
+  static const double _kPipOverlaySize = 60;
+
+  void _openCategorySheet(QuestCategory cat) {
+    final screenH = MediaQuery.of(context).size.height;
+    final sheetMaxH = screenH * _kCategorySheetFraction;
+    _mountPipOverlay(sheetMaxH: sheetMaxH);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      // Transparent barrier so the home header (XP bar + coin chip) stays
+      // fully visible and un-dimmed above the sheet. Without this, the
+      // default scrim darkens everything behind the sheet — including the
+      // header — so reward animations look muted.
+      barrierColor: Colors.transparent,
       backgroundColor: Colors.transparent,
       enableDrag: true,
-      builder: (_) => CategoryScreen(category: cat),
+      // Fixed height so the sheet's top edge is predictable — the
+      // overlay-Pip position below depends on it.
+      constraints: BoxConstraints(maxHeight: sheetMaxH),
+      builder: (_) => CategoryScreen(
+        category: cat,
+        choreographer: _choreographer,
+      ),
     ).then((_) {
+      _removePipOverlay();
       if (!mounted) return;
-      ref.read(soundServiceProvider).unduck();
       setState(() => _homeOnTop = true);
     });
+  }
+
+  // Pip slides up with the category sheet — same duration/curve as the
+  // modal bottom-sheet open animation. Lands 20 px above the sheet's
+  // upper edge. Bound to the same _pipCtrl as the home Pip so her
+  // celebration jump fires here whenever the choreographer triggers
+  // reactHappy().
+  void _mountPipOverlay({required double sheetMaxH}) {
+    if (_rewardOverlay != null) return;
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final screenH = MediaQuery.of(context).size.height;
+    final sheetTopY = screenH - sheetMaxH;
+    final pipTopFinal = sheetTopY - 20 - _kPipOverlaySize;
+    _rewardOverlay = OverlayEntry(
+      builder: (_) => _SlidingPipOverlay(
+        pipController: _pipCtrl,
+        size: _kPipOverlaySize,
+        startTop: screenH,        // off-screen below
+        endTop: pipTopFinal,
+        left: 24,
+      ),
+    );
+    overlay.insert(_rewardOverlay!);
+  }
+
+  void _removePipOverlay() {
+    _rewardOverlay?.remove();
+    _rewardOverlay = null;
   }
 
   @override
   Widget build(BuildContext context) {
     ref.listen<AudioSettings>(audioSettingsProvider, (_, next) {
       ref.read(soundServiceProvider).applySettings(next);
+    });
+
+    // When Pip is about to speak, fire her celebration jump and mount
+    // the speech bubble into the root Overlay so it floats above any
+    // open modal sheet (otherwise it would be hidden behind the
+    // category sheet's widget tree).
+    ref.listen<String?>(pendingPipSpeechProvider, (prev, next) {
+      if (prev == null && next != null) {
+        _pipCtrl.reactHappy();
+        _mountSpeechOverlay(next);
+      } else if (next == null && _speechOverlay != null) {
+        _removeSpeechOverlay();
+      }
     });
 
     final isClean      = ref.watch(roomCleanProvider);
@@ -192,6 +267,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       ],
     );
+  }
+
+  // ── Speech bubble overlay ────────────────────────────────────────────
+  // Mounted into the root Overlay so it stays above any modal sheet.
+
+  void _mountSpeechOverlay(String text) {
+    if (_speechOverlay != null) {
+      _speechOverlay!.remove();
+    }
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final topPadding = MediaQuery.of(context).padding.top;
+    _speechOverlay = OverlayEntry(
+      builder: (_) => Positioned(
+        top: topPadding + 16,
+        left: 0,
+        right: 0,
+        child: Center(
+          child: PipSpeechBubble(
+            key: ValueKey(text),
+            text: text,
+            onDismissed: () {
+              if (!mounted) return;
+              ref.read(pendingPipSpeechProvider.notifier).clear();
+            },
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_speechOverlay!);
+  }
+
+  void _removeSpeechOverlay() {
+    _speechOverlay?.remove();
+    _speechOverlay = null;
   }
 
   Widget _buildHeader(String name, int level) {
@@ -453,6 +562,70 @@ class _MusicSpeakerOverlayState extends ConsumerState<_MusicSpeakerOverlay>
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Pip that slides up with the modal category sheet. Mounted off-screen
+/// (startTop) and animated to its resting position (endTop) over the same
+/// duration as the modal's open animation, so the two move in lockstep.
+class _SlidingPipOverlay extends StatefulWidget {
+  final PipController pipController;
+  final double size;
+  final double startTop;
+  final double endTop;
+  final double left;
+  const _SlidingPipOverlay({
+    required this.pipController,
+    required this.size,
+    required this.startTop,
+    required this.endTop,
+    required this.left,
+  });
+
+  @override
+  State<_SlidingPipOverlay> createState() => _SlidingPipOverlayState();
+}
+
+class _SlidingPipOverlayState extends State<_SlidingPipOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _slide;
+  late final Animation<double> _top;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mirrors Flutter's default modal bottom-sheet open duration / curve.
+    _slide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _top = Tween<double>(begin: widget.startTop, end: widget.endTop).animate(
+      CurvedAnimation(parent: _slide, curve: Curves.easeOutCubic),
+    );
+    _slide.forward();
+  }
+
+  @override
+  void dispose() {
+    _slide.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _slide,
+      builder: (_, __) => Positioned(
+        top: _top.value,
+        left: widget.left,
+        child: IgnorePointer(
+          child: RewardCornerPip(
+            controller: widget.pipController,
+            size: widget.size,
+          ),
+        ),
       ),
     );
   }

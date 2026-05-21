@@ -67,19 +67,21 @@ class _XpBarState extends State<XpBar> with TickerProviderStateMixin {
     _ctrl.addStatusListener(_onStatus);
     _sparkleTicker.addListener(_onSparkleTick);
 
-    widget.controller?.attach(
+    _attachToken = widget.controller?.attach(
       highlight: _highlight,
       fillTo: _fillTo,
       snap: _snapTo,
     );
   }
 
+  Object? _attachToken;
+
   @override
   void didUpdateWidget(covariant XpBar old) {
     super.didUpdateWidget(old);
     if (widget.controller != old.controller) {
-      old.controller?.detach();
-      widget.controller?.attach(
+      if (_attachToken != null) old.controller?.detach(_attachToken!);
+      _attachToken = widget.controller?.attach(
         highlight: _highlight,
         fillTo: _fillTo,
         snap: _snapTo,
@@ -207,7 +209,7 @@ class _XpBarState extends State<XpBar> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    widget.controller?.detach();
+    if (_attachToken != null) widget.controller?.detach(_attachToken!);
     _ctrl.dispose();
     _sparkleTicker.dispose();
     _glowCtrl.dispose();

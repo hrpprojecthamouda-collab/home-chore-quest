@@ -51,19 +51,21 @@ class _AnimatedCoinCounterState extends ConsumerState<AnimatedCoinCounter>
       duration: const Duration(milliseconds: 220),
     );
 
-    widget.controller?.attach(
+    _attachToken = widget.controller?.attach(
       highlight: _highlight,
       countTo: _countTo,
       snap: _snap,
     );
   }
 
+  Object? _attachToken;
+
   @override
   void didUpdateWidget(covariant AnimatedCoinCounter old) {
     super.didUpdateWidget(old);
     if (widget.controller != old.controller) {
-      old.controller?.detach();
-      widget.controller?.attach(
+      if (_attachToken != null) old.controller?.detach(_attachToken!);
+      _attachToken = widget.controller?.attach(
         highlight: _highlight,
         countTo: _countTo,
         snap: _snap,
@@ -73,7 +75,7 @@ class _AnimatedCoinCounterState extends ConsumerState<AnimatedCoinCounter>
 
   @override
   void dispose() {
-    widget.controller?.detach();
+    if (_attachToken != null) widget.controller?.detach(_attachToken!);
     _frameTimer?.cancel();
     _tickTimer?.cancel();
     _punch.dispose();

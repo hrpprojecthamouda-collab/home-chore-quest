@@ -11,85 +11,113 @@
 
 import 'package:flutter/foundation.dart';
 
-class PipController {
-  Future<void> Function()? _react;
+// Multi-listener model: attach() returns a token, detach(token) removes
+// only that subscriber. The choreographer drives a single trigger; every
+// attached widget reacts. This lets us mount a second visible surface
+// (e.g. an overlay strip above a modal sheet) without unbinding the home
+// header — both react in parallel.
 
-  void attach(Future<void> Function() react) {
-    _react = react;
+class PipController {
+  final Map<Object, Future<void> Function()> _reactors = {};
+
+  Object attach(Future<void> Function() react) {
+    final token = Object();
+    _reactors[token] = react;
+    return token;
   }
 
-  void detach() {
-    _react = null;
+  void detach(Object token) {
+    _reactors.remove(token);
   }
 
   Future<void> reactHappy() async {
-    final r = _react;
-    if (r == null) return;
-    await r();
+    if (_reactors.isEmpty) return;
+    await Future.wait(_reactors.values.map((r) => r()));
   }
 }
 
 class CoinChipController extends ChangeNotifier {
-  void Function()? _highlight;
-  Future<void> Function(int target)? _countTo;
-  void Function(int v)? _snap;
+  final Map<Object, _CoinHandlers> _handlers = {};
   // Set to true while a choreographer is driving so the chip's auto-listen
   // path snaps silently instead of animating.
   bool active = false;
 
-  void attach({
+  Object attach({
     required void Function() highlight,
     required Future<void> Function(int target) countTo,
     required void Function(int v) snap,
   }) {
-    _highlight = highlight;
-    _countTo = countTo;
-    _snap = snap;
+    final token = Object();
+    _handlers[token] = _CoinHandlers(highlight, countTo, snap);
+    return token;
   }
 
-  void detach() {
-    _highlight = null;
-    _countTo = null;
-    _snap = null;
+  void detach(Object token) {
+    _handlers.remove(token);
   }
 
-  void highlight() => _highlight?.call();
+  void highlight() {
+    for (final h in _handlers.values) {
+      h.highlight();
+    }
+  }
   Future<void> countTo(int v) async {
-    final fn = _countTo;
-    if (fn == null) return;
-    await fn(v);
+    if (_handlers.isEmpty) return;
+    await Future.wait(_handlers.values.map((h) => h.countTo(v)));
   }
-  void snap(int v) => _snap?.call(v);
+  void snap(int v) {
+    for (final h in _handlers.values) {
+      h.snap(v);
+    }
+  }
+}
+
+class _CoinHandlers {
+  final void Function() highlight;
+  final Future<void> Function(int target) countTo;
+  final void Function(int v) snap;
+  _CoinHandlers(this.highlight, this.countTo, this.snap);
 }
 
 class XpBarController extends ChangeNotifier {
-  void Function()? _highlight;
-  Future<void> Function(double pct, {required Duration duration})? _fillTo;
-  void Function(double pct, {required int newMax})? _snap;
+  final Map<Object, _XpHandlers> _handlers = {};
   bool active = false;
 
-  void attach({
+  Object attach({
     required void Function() highlight,
     required Future<void> Function(double pct, {required Duration duration}) fillTo,
     required void Function(double pct, {required int newMax}) snap,
   }) {
-    _highlight = highlight;
-    _fillTo = fillTo;
-    _snap = snap;
+    final token = Object();
+    _handlers[token] = _XpHandlers(highlight, fillTo, snap);
+    return token;
   }
 
-  void detach() {
-    _highlight = null;
-    _fillTo = null;
-    _snap = null;
+  void detach(Object token) {
+    _handlers.remove(token);
   }
 
-  void highlight() => _highlight?.call();
+  void highlight() {
+    for (final h in _handlers.values) {
+      h.highlight();
+    }
+  }
   Future<void> fillTo(double pct, {required Duration duration}) async {
-    final fn = _fillTo;
-    if (fn == null) return;
-    await fn(pct, duration: duration);
+    if (_handlers.isEmpty) return;
+    await Future.wait(
+      _handlers.values.map((h) => h.fillTo(pct, duration: duration)),
+    );
   }
-  void snapTo(double pct, {required int newMax}) =>
-      _snap?.call(pct, newMax: newMax);
+  void snapTo(double pct, {required int newMax}) {
+    for (final h in _handlers.values) {
+      h.snap(pct, newMax: newMax);
+    }
+  }
+}
+
+class _XpHandlers {
+  final void Function() highlight;
+  final Future<void> Function(double pct, {required Duration duration}) fillTo;
+  final void Function(double pct, {required int newMax}) snap;
+  _XpHandlers(this.highlight, this.fillTo, this.snap);
 }

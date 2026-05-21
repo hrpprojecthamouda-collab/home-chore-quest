@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../animation/reward_choreographer.dart';
-import '../animation/reward_controllers.dart';
 import '../models/quest.dart';
 import '../providers/game_providers.dart';
 import '../services/sound_service.dart';
@@ -15,43 +14,28 @@ import '../widgets/quest_suggestion_sheet.dart';
 
 class CategoryScreen extends ConsumerStatefulWidget {
   final QuestCategory category;
+  // Choreographer is injected by the parent (home_screen) so reward
+  // animations target the HOME's visible XP bar / coin chip / Pip — the
+  // ones actually on screen behind the modal. A locally-owned
+  // choreographer would drive controllers with no attached widgets and
+  // produce no visible animation.
+  final RewardChoreographer choreographer;
 
-  const CategoryScreen({super.key, required this.category});
+  const CategoryScreen({
+    super.key,
+    required this.category,
+    required this.choreographer,
+  });
 
   @override
   ConsumerState<CategoryScreen> createState() => _CategoryScreenState();
 }
 
 class _CategoryScreenState extends ConsumerState<CategoryScreen> {
-
-  // Reward animation controllers + orchestrator.
-  final PipController _pipCtrl = PipController();
-  final CoinChipController _coinCtrl = CoinChipController();
-  final XpBarController _xpCtrl = XpBarController();
-  late final RewardChoreographer _choreographer;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _choreographer = RewardChoreographer(
-      pip: _pipCtrl,
-      coin: _coinCtrl,
-      xp: _xpCtrl,
-      sound: ref.read(soundServiceProvider),
-    );
-  }
-
-  @override
-  void dispose() {
-    _choreographer.cancel();
-    super.dispose();
-  }
-
   Future<void> _completeQuest(int questIndex, Quest quest) {
     return runQuestCompletion(
       ref: ref,
-      choreographer: _choreographer,
+      choreographer: widget.choreographer,
       context: context,
       index: questIndex,
       quest: quest,
@@ -65,10 +49,6 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
   Widget build(BuildContext context) {
     final cat       = widget.category;
     final questList = ref.watch(questsByCategory(cat));
-    // Same screen-derived cap chilling uses (`* 0.42`). Stable across the
-    // slide animation, scrolls inside the list once exceeded.
-    final screenH = MediaQuery.of(context).size.height;
-    final listMaxH = screenH * 0.55;
     final navBarBottom = MediaQuery.of(context).padding.bottom;
 
     // Presented as a modal bottom sheet — 12 px horizontal margin so the
@@ -86,8 +66,13 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
           BoxShadow(color: Color(0x80000000), offset: Offset(0, 4)),
         ],
       ),
+      // Column fills the sheet's full height (set by home_screen's
+      // maxHeight constraint). Quest list inside is Expanded → consumes
+      // remaining space and scrolls when content overflows, so the sheet
+      // outline stays constant across categories regardless of how many
+      // quests are pending.
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
           // Drag handle.
           Center(
@@ -129,22 +114,18 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
               ),
 
               // ── Quest list ───────────────────────────────────────────────
-              // Mirrors the chilling sheet's structure: Flexible + a
-              // ConstrainedBox with a SCREEN-derived maxHeight, plus
-              // ListView.builder(shrinkWrap: true). The viewport is stable
-              // across frames during the sheet's slide-up animation (because
-              // screen height doesn't change), so the layout doesn't thrash
-              // and the content doesn't flicker.
+              // Expanded → ListView takes all remaining sheet height and
+              // scrolls internally when content exceeds it. No shrinkWrap
+              // needed (viewport is bounded by the parent Expanded), no
+              // maxHeight juggling, no overflow on long lists.
               //
               // Index layout:
               //   0          = "On your list" header row
               //   1          = optional empty-state placeholder
               //   1 + N      = the N quest cards
               //   last       = "+ Add a [category] quest" button
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: listMaxH),
+              Expanded(
                 child: ListView.builder(
-                  shrinkWrap: true,
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   // Infinite cacheExtent forces every item to build on the
                   // sliver's first layout, before the sheet starts sliding
@@ -158,49 +139,10 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
                     if (idx == 0) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          children: [
-                            Text(
-                              'On your list',
-                              style: GoogleFonts.nunito(
-                                  fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
-                            ),
-                            const Spacer(),
-                            if (questList.any((q) => q.isCompleted))
-                              GestureDetector(
-                                onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (_) => AlertDialog(
-                                      backgroundColor: AppColors.surface,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                      title: Text('Clear history?',
-                                          style: GoogleFonts.nunito(fontWeight: FontWeight.w900, color: Colors.white)),
-                                      content: Text('This will remove all completed quests from this category.',
-                                          style: GoogleFonts.nunito(color: AppColors.muted, fontSize: 13)),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(context),
-                                          child: Text('Cancel', style: GoogleFonts.nunito(color: AppColors.muted)),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            ref.read(questListProvider.notifier).clearCategoryHistory(cat);
-                                            Navigator.pop(context);
-                                          },
-                                          child: Text('Clear', style: GoogleFonts.nunito(color: AppColors.red, fontWeight: FontWeight.w900)),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                                child: Text(
-                                  'Clear history',
-                                  style: GoogleFonts.nunito(
-                                      fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.red),
-                                ),
-                              ),
-                          ],
+                        child: Text(
+                          'On your list',
+                          style: GoogleFonts.nunito(
+                              fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                       );
                     }

@@ -13,7 +13,19 @@ final firestoreUserProvider = Provider<FirestoreUserService>((ref) {
   return FirestoreUserService();
 });
 
-// Auth state provider - tracks if user is logged in
+// Auth state provider - tracks if user is logged in.
+//
+// IMPORTANT: Firebase Auth on Android/iOS restores the persisted session
+// asynchronously AFTER Firebase.initializeApp returns. If we subscribed to
+// userChanges() alone, the first emission can be `null` on a cold launch
+// (because restore hasn't completed yet), which would route the user to
+// LoginScreen even though they have a valid session on disk.
+//
+// To avoid that: this stream prepends FirebaseAuth.instance.currentUser
+// (which is already populated by the time main() awaits initializeApp on
+// most cold-launch paths) as the very first emission, then yields the
+// regular userChanges() stream after it. That way the router never sees a
+// spurious null before restoration finishes.
 final authStateProvider = StreamProvider<User?>((ref) {
   final authService = ref.watch(firebaseAuthProvider);
   return authService.authStateChanges;

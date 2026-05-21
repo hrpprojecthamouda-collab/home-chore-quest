@@ -19,7 +19,9 @@ import '../animation/reward_controllers.dart';
 import '../models/furniture_skin.dart';
 import '../models/quest.dart';
 import '../providers/furniture_providers.dart';
+import '../providers/game_providers.dart';
 import 'pip_mascot.dart';
+import 'quest_count_badge.dart';
 import 'room_shell_painter.dart';
 
 // Hit targets in design space (400 × 600).
@@ -149,6 +151,26 @@ class _BedroomSceneState extends ConsumerState<BedroomScene>
                     controller: widget.pipController,
                   ),
                 ),
+              // Admin (desk) badge — top-right corner of the desk.
+              Positioned(
+                left: 285 * sx,
+                top:  250 * sy,
+                child: QuestCountBadge(
+                  count: ref.watch(
+                    pendingQuestsByCategory(QuestCategory.admin),
+                  ).length,
+                ),
+              ),
+              // Bedroom (bed) badge — centered above the bed.
+              Positioned(
+                left: 180 * sx,
+                top:  455 * sy,
+                child: QuestCountBadge(
+                  count: ref.watch(
+                    pendingQuestsByCategory(QuestCategory.bedroom),
+                  ).length,
+                ),
+              ),
             ],
           );
         },

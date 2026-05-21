@@ -65,10 +65,12 @@ class _PipMascotState extends State<PipMascot>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    widget.controller?.attach(() async {
+    _attachToken = widget.controller?.attach(() async {
       await _reactCtrl.forward(from: 0);
     });
   }
+
+  Object? _attachToken;
 
   @override
   void didUpdateWidget(PipMascot old) {
@@ -82,8 +84,8 @@ class _PipMascotState extends State<PipMascot>
       }
     }
     if (widget.controller != old.controller) {
-      old.controller?.detach();
-      widget.controller?.attach(() async {
+      if (_attachToken != null) old.controller?.detach(_attachToken!);
+      _attachToken = widget.controller?.attach(() async {
         await _reactCtrl.forward(from: 0);
       });
     }
@@ -91,7 +93,7 @@ class _PipMascotState extends State<PipMascot>
 
   @override
   void dispose() {
-    widget.controller?.detach();
+    if (_attachToken != null) widget.controller?.detach(_attachToken!);
     _waveCtrl.dispose();
     _reactCtrl.dispose();
     super.dispose();
@@ -442,17 +444,19 @@ class _PipWithItemsState extends ConsumerState<PipWithItems>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    widget.controller?.attach(() async {
+    _attachToken = widget.controller?.attach(() async {
       await _reactCtrl.forward(from: 0);
     });
   }
+
+  Object? _attachToken;
 
   @override
   void didUpdateWidget(PipWithItems old) {
     super.didUpdateWidget(old);
     if (widget.controller != old.controller) {
-      old.controller?.detach();
-      widget.controller?.attach(() async {
+      if (_attachToken != null) old.controller?.detach(_attachToken!);
+      _attachToken = widget.controller?.attach(() async {
         await _reactCtrl.forward(from: 0);
       });
     }
@@ -460,7 +464,7 @@ class _PipWithItemsState extends ConsumerState<PipWithItems>
 
   @override
   void dispose() {
-    widget.controller?.detach();
+    if (_attachToken != null) widget.controller?.detach(_attachToken!);
     _reactCtrl.dispose();
     super.dispose();
   }
